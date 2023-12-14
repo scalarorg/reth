@@ -55,7 +55,7 @@ members = [
     "examples/rpc-db/",
     "examples/trace-transaction-cli/",
     "testing/ef-tests/",
-    "scalar"
+    "scalar/reth-node",
 ]
 default-members = ["bin/reth"]
 
@@ -138,8 +138,13 @@ reth-transaction-pool = { path = "crates/transaction-pool" }
 reth-trie = { path = "crates/trie" }
 
 # revm
-revm = { git = "https://github.com/bluealloy/revm", branch = "reth_freeze",  features = ["std", "secp256k1"], default-features = false }
-revm-primitives = { git = "https://github.com/bluealloy/revm", branch = "reth_freeze", features = ["std"], default-features = false }
+revm = { git = "https://github.com/bluealloy/revm", branch = "reth_freeze", features = [
+    "std",
+    "secp256k1",
+], default-features = false }
+revm-primitives = { git = "https://github.com/bluealloy/revm", branch = "reth_freeze", features = [
+    "std",
+], default-features = false }
 
 # eth
 alloy-primitives = "0.5"
@@ -174,7 +179,7 @@ strum = "0.25"
 rayon = "1.7"
 itertools = "0.11"
 parking_lot = "0.12"
-metrics = "0.21.1" # Needed for `metrics-macro` to resolve the crate using `::metrics` notation
+metrics = "0.21.1"                                    # Needed for `metrics-macro` to resolve the crate using `::metrics` notation
 hex-literal = "0.4"
 once_cell = "1.17"
 syn = "2.0"

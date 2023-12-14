@@ -1,24 +1,18 @@
-/// ScalarAbciRequest is the request for ScalarAbci.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ConsensusTransactionIn {
-    #[prost(bytes = "vec", tag = "1")]
+pub struct ExternalTransaction {
+    /// Namespace used to classify services
+    #[prost(string, tag = "1")]
+    pub namespace: ::prost::alloc::string::String,
+    /// Transaction hash or some raw data
+    #[prost(bytes = "vec", tag = "2")]
     pub tx_bytes: ::prost::alloc::vec::Vec<u8>,
-    #[prost(string, repeated, tag = "2")]
-    pub signatures: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
-/// ScalarAbciResponse is the response for ScalarAbci.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ConsensusTransactionOut {
-    ///
-    /// oneof message {
-    /// RequestArk ark = 1;
-    /// ScalarOutTransaction tran = 2;
-    /// KeygenOutput keygen = 3;
-    /// }
-    #[prost(bytes = "vec", tag = "1")]
-    pub payload: ::prost::alloc::vec::Vec<u8>,
+pub struct CommitedTransactions {
+    #[prost(message, repeated, tag = "1")]
+    pub transactions: ::prost::alloc::vec::Vec<ExternalTransaction>,
 }
 /// Generated client implementations.
 pub mod consensus_api_client {
@@ -116,10 +110,10 @@ pub mod consensus_api_client {
         pub async fn init_transaction(
             &mut self,
             request: impl tonic::IntoStreamingRequest<
-                Message = super::ConsensusTransactionIn,
+                Message = super::ExternalTransaction,
             >,
         ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::ConsensusTransactionOut>>,
+            tonic::Response<tonic::codec::Streaming<super::CommitedTransactions>>,
             tonic::Status,
         > {
             self.inner
@@ -151,7 +145,7 @@ pub mod consensus_api_server {
     pub trait ConsensusApi: Send + Sync + 'static {
         /// Server streaming response type for the InitTransaction method.
         type InitTransactionStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<super::ConsensusTransactionOut, tonic::Status>,
+                Item = std::result::Result<super::CommitedTransactions, tonic::Status>,
             >
             + Send
             + 'static;
@@ -164,7 +158,7 @@ pub mod consensus_api_server {
         /// BidirectionalStreamingScalarAbci is bidi streaming.
         async fn init_transaction(
             &self,
-            request: tonic::Request<tonic::Streaming<super::ConsensusTransactionIn>>,
+            request: tonic::Request<tonic::Streaming<super::ExternalTransaction>>,
         ) -> std::result::Result<
             tonic::Response<Self::InitTransactionStream>,
             tonic::Status,
@@ -255,9 +249,9 @@ pub mod consensus_api_server {
                     struct InitTransactionSvc<T: ConsensusApi>(pub Arc<T>);
                     impl<
                         T: ConsensusApi,
-                    > tonic::server::StreamingService<super::ConsensusTransactionIn>
+                    > tonic::server::StreamingService<super::ExternalTransaction>
                     for InitTransactionSvc<T> {
-                        type Response = super::ConsensusTransactionOut;
+                        type Response = super::CommitedTransactions;
                         type ResponseStream = T::InitTransactionStream;
                         type Future = BoxFuture<
                             tonic::Response<Self::ResponseStream>,
@@ -266,7 +260,7 @@ pub mod consensus_api_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                tonic::Streaming<super::ConsensusTransactionIn>,
+                                tonic::Streaming<super::ExternalTransaction>,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);

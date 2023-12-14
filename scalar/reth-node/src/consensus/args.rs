@@ -4,13 +4,8 @@ use crate::cli::components::RethNodeComponents;
 use crate::cli::ext::RethNodeCommandConfig;
 use clap::Args;
 use reth_rpc::JwtSecret;
-use reth_transaction_pool::{
-    PoolConfig, PriceBumpConfig, SubPoolLimit, TransactionListenerKind, TransactionPool,
-    DEFAULT_PRICE_BUMP, REPLACE_BLOB_PRICE_BUMP, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER,
-    TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT, TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
-};
 
-use crate::consensus::{ScalarConsensusHandles, ScalarConsensus, DEFAULT_NARWHAL_PORT};
+use crate::consensus::{ScalarConsensus, ScalarConsensusHandles, DEFAULT_NARWHAL_PORT};
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 use tracing::info;
@@ -47,23 +42,12 @@ impl ConsensusArgs {
         Reth: RethNodeComponents,
         Conf: RethNodeCommandConfig,
     {
-        info!(
-            "Start Narwhal&Bullshark consensus client option {:?}",
-            &self.narwhal
-        );
+        info!("Start Narwhal&Bullshark consensus client option {:?}", &self.narwhal);
         if self.narwhal {
             let socket_address = SocketAddr::new(self.narwhal_addr, self.narwhal_port);
             let transaction_pool = components.pool();
-            info!(
-                "Start Narwhal&Bullshark consensus client at the address {:?}",
-                &socket_address
-            );
-            ScalarConsensus::new(
-                socket_address,
-                &transaction_pool,
-                jwt_secret,
-            )
-            .await
+            info!("Start Narwhal&Bullshark consensus client at the address {:?}", &socket_address);
+            ScalarConsensus::new(socket_address, &transaction_pool, jwt_secret).await
         } else {
             let handles = ScalarConsensusHandles {};
             Ok(handles)
@@ -74,27 +58,3 @@ impl ConsensusArgs {
         //     .pending_transactions_listener_for(TransactionListenerKind::PropagateOnly);
     }
 }
-// impl ConsensusArgs {
-//     /// Returns transaction pool configuration.
-//     pub fn consensus_config(&self) -> ConsensusConfig {
-//         ConsensusConfig {
-//             pending_limit: SubPoolLimit {
-//                 max_txs: self.pending_max_count,
-//                 max_size: self.pending_max_size * 1024 * 1024,
-//             },
-//             basefee_limit: SubPoolLimit {
-//                 max_txs: self.basefee_max_count,
-//                 max_size: self.basefee_max_size * 1024 * 1024,
-//             },
-//             queued_limit: SubPoolLimit {
-//                 max_txs: self.queued_max_count,
-//                 max_size: self.queued_max_size * 1024 * 1024,
-//             },
-//             max_account_slots: self.max_account_slots,
-//             price_bumps: PriceBumpConfig {
-//                 default_price_bump: self.price_bump,
-//                 replace_blob_tx_price_bump: self.blob_transaction_price_bump,
-//             },
-//         }
-//     }
-// }

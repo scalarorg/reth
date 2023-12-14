@@ -32,6 +32,7 @@ pub mod args;
 pub mod chain;
 pub mod cli;
 pub mod config;
+pub mod consensus;
 pub mod db;
 pub mod debug_cmd;
 pub mod dirs;
@@ -39,14 +40,13 @@ pub mod init;
 pub mod node;
 pub mod p2p;
 pub mod prometheus_exporter;
+mod proto;
 pub mod recover;
 pub mod runner;
 pub mod stage;
 pub mod test_vectors;
 pub mod utils;
 pub mod version;
-pub mod consensus;
-mod proto;
 pub use proto::consensus_api_client::*;
 pub use proto::consensus_api_server::*;
 pub use proto::*;
@@ -134,3 +134,5 @@ use jemallocator as _;
 
 // for rendering diagrams
 use aquamarine as _;
+
+pub const NAMESPACE: &str = "reth";

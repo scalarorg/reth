@@ -20,23 +20,13 @@
 
  package consensus;
 
- // ScalarAbciRequest is the request for ScalarAbci.
- message ConsensusTransactionIn {
-    bytes tx_bytes = 1;
-    repeated string signatures = 2;
-    
+ message ExternalTransaction {
+    string namespace = 1;   //Namespace used to classify services
+    bytes tx_bytes = 2;     //Transaction hash or some raw data 
  }
 
- // ScalarAbciResponse is the response for ScalarAbci.
- message ConsensusTransactionOut {
-   /*
-    oneof message {
-        RequestArk ark = 1;
-        ScalarOutTransaction tran = 2;
-        KeygenOutput keygen = 3;
-    }
-    */
-    bytes payload = 1;
+ message CommitedTransactions {
+    repeated ExternalTransaction transactions = 1;
  }
 
  // Echo is the echo service.
@@ -48,5 +38,5 @@
    // ClientStreamingEcho is client side streaming.
    // rpc ClientStreamingScalarAbci(stream ScalarAbciRequest) returns (ScalarAbciResponse) {}
    // BidirectionalStreamingScalarAbci is bidi streaming.
-   rpc InitTransaction(stream ConsensusTransactionIn) returns (stream ConsensusTransactionOut) {}
+   rpc InitTransaction(stream ExternalTransaction) returns (stream CommitedTransactions) {}
  }
