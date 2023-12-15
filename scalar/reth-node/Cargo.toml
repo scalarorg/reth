@@ -52,7 +52,11 @@ reth-nippy-jar.workspace = true
 
 # crypto
 alloy-rlp.workspace = true
-secp256k1 = { workspace = true, features = ["global-context", "rand-std", "recovery"] }
+secp256k1 = { workspace = true, features = [
+    "global-context",
+    "rand-std",
+    "recovery",
+] }
 
 # tracing
 tracing.workspace = true
@@ -85,9 +89,15 @@ human_bytes = "0.4.1"
 
 # async
 async-stream = "0.3.5"
-tokio = { workspace = true, features = ["sync", "macros", "time", "rt-multi-thread"] }
+tokio = { workspace = true, features = [
+    "sync",
+    "macros",
+    "time",
+    "rt-multi-thread",
+] }
 tokio-stream.workspace = true
 futures.workspace = true
+futures-util.workspace = true
 pin-project.workspace = true
 
 # http/rpc
@@ -152,4 +162,3 @@ vergen = { version = "8.0.0", features = ["build", "cargo", "git", "gitcl"] }
 [[bin]]
 name = "scalar-reth"
 path = "src/main.rs"
-

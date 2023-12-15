@@ -13,13 +13,17 @@ use crate::{
         config::{RethRpcConfig, RethTransactionPoolConfig},
         ext::{RethCliExt, RethNodeCommandConfig},
     },
+    consensus::{
+        ConsensusArgs, EitherDownloader, ScalarBuilder, ScalarConsensus, ScalarMiningMode,
+    },
     dirs::{ChainPath, DataDirPath, MaybePlatformPath},
     init::init_genesis,
     node::cl_events::ConsensusLayerHealthEvents,
     prometheus_exporter,
     runner::CliContext,
     utils::get_single_header,
-    version::SHORT_VERSION, consensus::ConsensusArgs,
+    version::SHORT_VERSION,
+    ExternalTransaction,
 };
 use clap::{value_parser, Parser};
 use eyre::Context;
@@ -47,7 +51,6 @@ use reth_interfaces::{
     consensus::Consensus,
     p2p::{
         bodies::{client::BodiesClient, downloader::BodyDownloader},
-        either::EitherDownloader,
         headers::{client::HeadersClient, downloader::HeaderDownloader},
     },
     RethResult,
@@ -87,7 +90,10 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use tokio::sync::{mpsc::unbounded_channel, oneshot, watch};
+use tokio::sync::{
+    mpsc::{self, unbounded_channel},
+    oneshot, watch,
+};
 use tracing::*;
 
 pub mod cl_events;
@@ -399,7 +405,6 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         } else {
             None
         };
-
         // Configure the pipeline
         let (mut pipeline, client) = if self.dev.dev {
             info!(target: "reth::cli", "Starting Reth in dev mode");
@@ -444,7 +449,45 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             debug!(target: "reth::cli", "Spawning auto mine task");
             ctx.task_executor.spawn(Box::pin(task));
 
-            (pipeline, EitherDownloader::Left(client))
+            (pipeline, EitherDownloader::AutoSeal(client))
+        } else if self.consensus.narwhal {
+            info!(target: "reth::cli", "Starting Reth with narwhal consensus");
+            let (tx_commited_transactions, rx_commited_transactions) =
+                mpsc::unbounded_channel::<Vec<ExternalTransaction>>();
+            let mining_mode = ScalarMiningMode::narwhal(
+                transaction_pool.pending_transactions_listener(),
+                rx_commited_transactions,
+            );
+            let (_, client, mut task) = ScalarBuilder::new(
+                Arc::clone(&self.chain),
+                blockchain_db.clone(),
+                transaction_pool.clone(),
+                consensus_engine_tx.clone(),
+                canon_state_notification_sender,
+                mining_mode,
+                tx_commited_transactions,
+                self.consensus.clone(),
+            )
+            .build();
+
+            let mut pipeline = self
+                .build_networked_pipeline(
+                    &config.stages,
+                    client.clone(),
+                    Arc::clone(&consensus),
+                    provider_factory,
+                    &ctx.task_executor,
+                    sync_metrics_tx,
+                    prune_config.clone(),
+                    max_block,
+                )
+                .await?;
+
+            let pipeline_events = pipeline.events();
+            task.set_pipeline_events(pipeline_events);
+            debug!(target: "reth::cli", "Spawning auto mine task");
+            ctx.task_executor.spawn(Box::pin(task));
+            (pipeline, EitherDownloader::Scalar(client))
         } else {
             let pipeline = self
                 .build_networked_pipeline(
@@ -459,7 +502,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
                 )
                 .await?;
 
-            (pipeline, EitherDownloader::Right(network_client))
+            (pipeline, EitherDownloader::Beacon(network_client))
         };
 
         let pipeline_events = pipeline.events();
@@ -536,7 +579,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         let engine_api = EngineApi::new(
             blockchain_db.clone(),
             self.chain.clone(),
-            beacon_engine_handle,
+            beacon_engine_handle.clone(),
             payload_builder.into(),
             Box::new(ctx.task_executor.clone()),
         );
@@ -552,10 +595,10 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
          * Tags: Consensus Client
          */
 
-        let _consensus_handle = self
-            .consensus
-            .start_client(&components, jwt_secret.clone(), &mut self.ext)
-            .await?;
+        // let _consensus_handle = self
+        //     .consensus
+        //     .start_client(&components, beacon_engine_handle, jwt_secret.clone(), &mut self.ext)
+        //     .await?;
         /*
          * End of prepare consensus adapter
          */
@@ -618,6 +661,8 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
     pub fn consensus(&self) -> Arc<dyn Consensus> {
         if self.dev.dev {
             Arc::new(AutoSealConsensus::new(Arc::clone(&self.chain)))
+        } else if self.consensus.narwhal {
+            Arc::new(ScalarConsensus::new(Arc::clone(&self.chain)))
         } else {
             Arc::new(BeaconConsensus::new(Arc::clone(&self.chain)))
         }
@@ -832,7 +877,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         // try to look up the header in the database
         if let Some(header) = header {
             info!(target: "reth::cli", ?tip, "Successfully looked up tip block in the database");
-            return Ok(header.seal_slow())
+            return Ok(header.seal_slow());
         }
 
         info!(target: "reth::cli", ?tip, "Fetching tip block from the network.");
@@ -840,7 +885,7 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             match get_single_header(&client, tip).await {
                 Ok(tip_header) => {
                     info!(target: "reth::cli", ?tip, "Successfully fetched tip");
-                    return Ok(tip_header)
+                    return Ok(tip_header);
                 }
                 Err(error) => {
                     error!(target: "reth::cli", %error, "Failed to fetch the tip. Retrying...");
