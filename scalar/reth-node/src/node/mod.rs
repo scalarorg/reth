@@ -259,7 +259,15 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         // get config
         let config = self.load_config()?;
 
-        let prometheus_handle = self.install_prometheus_recorder()?;
+        // 23-12-13 HuongND
+        // Temporarily comment out the metrics endpoint
+        // let prometheus_handle = self.install_prometheus_recorder()?;
+        // 23-12-14 HuongND
+        // Temporarily only allow one instance install the metrics endpoint
+        let mut prometheus_handle = None;
+        if self.instance == 1 {
+            prometheus_handle = Some(self.install_prometheus_recorder()?);
+        }
 
         let data_dir = self.data_dir();
         let db_path = data_dir.db_path();
@@ -280,7 +288,15 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
         provider_factory = provider_factory
             .with_snapshots(data_dir.snapshots_path(), snapshotter.highest_snapshot_receiver());
 
-        self.start_metrics_endpoint(prometheus_handle, Arc::clone(&db)).await?;
+        // 23-12-14 HuongND
+        // Temporarily only allow one instance install the metrics endpoint
+        if let Some(prometheus_handle) = prometheus_handle {
+            self.start_metrics_endpoint(prometheus_handle, Arc::clone(&db)).await?;
+        }
+
+        // 23-12-13 HuongND
+        // Temporarily comment out the metrics endpoint
+        // self.start_metrics_endpoint(prometheus_handle, Arc::clone(&db)).await?;
 
         debug!(target: "reth::cli", chain=%self.chain.chain, genesis=?self.chain.genesis_hash(), "Initializing genesis");
 
