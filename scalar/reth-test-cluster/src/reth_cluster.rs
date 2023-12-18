@@ -88,6 +88,8 @@ impl TestCluster {
             "--narwhal",
             "--narwhal.port",
             self.narwhal_port.as_ref().unwrap_or(&"9090".to_string()).as_str(),
+            "--bootnodes",
+            "enode://4901ba0085be8a1fb1e7725c4c6582668f5cd79e1da4a459207abf6afded09e41d23561d6a239183825bf14e80900c46f4c18d338095db79b4f2490c8fef81be@127.0.0.1:30303,enode://354f037e3fb7c2df27eb9de1f20f4a2f539e97379afd65de96c182637a86a1ae6f7bf8ffcf87eb3233839874449b3122f745139a85d055898bf7beef81f66d17@127.0.0.1:30304,enode://129a37d3192d394503ca3ca5ebeef2c6f63f04ad968cc79c222423aea1c3db633b5bf2d5538f39c8c1a103b2277c28df583d6c417dc928bf3fe7ecbb4e035ddc@127.0.0.1:30305,enode://17910578c735e05e3faee82e4890eaba8fac4cd6f6b94bd84c8c89bd6265024ff5f41aff1326d5f7b921092223385e937eb34fd101603eccfd88228433c2ccab@127.0.0.1:30306",
         ])
         .expect("Parse node command");
 
