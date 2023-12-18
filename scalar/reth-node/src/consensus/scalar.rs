@@ -177,7 +177,7 @@ fn start_consensus_client(
                  * Scalar TODO: convert transaction to ConsensusTransactionIn
                  */
                 let tx_bytes = tx_hash.as_slice().to_vec();
-                info!("Receive a pending transaction hash, send it into narwhal consensus {:?}", &tx_bytes);
+                debug!("Receive a pending transaction hash, send it into narwhal consensus {:?}", &tx_bytes);
                 let consensus_transaction = ExternalTransaction { namespace: NAMESPACE.to_owned(), tx_bytes };
                 yield consensus_transaction;
             }
@@ -190,7 +190,7 @@ fn start_consensus_client(
         while let Some(received) = resp_stream.next().await {
             match received {
                 Ok(CommitedTransactions { transactions }) => {
-                    info!("Received commited transactions: `{:?}`", &transactions);
+                    info!("Received {:?} commited transactions.", transactions.len());
                     if let Err(err) = tx_commited_transactions.send(transactions) {
                         error!("{:?}", err);
                     }

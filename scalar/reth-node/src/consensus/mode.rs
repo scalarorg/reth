@@ -2,9 +2,11 @@
 
 use crate::ExternalTransaction;
 use futures_util::{stream::Fuse, StreamExt};
+use reth_db::mdbx::tx;
 use reth_primitives::{revm_primitives::HashSet, TxHash};
 use reth_transaction_pool::{TransactionPool, ValidPoolTransaction};
 use std::{
+    collections::VecDeque,
     fmt,
     pin::Pin,
     sync::Arc,
@@ -63,6 +65,7 @@ impl ScalarMiningMode {
             rx_pending_trans: ReceiverStream::new(rx_pending_trans).fuse(),
             rx_commited_trans: UnboundedReceiverStream::new(rx_commited_trans).fuse(),
             commited_transactions: HashSet::default(),
+            queue_pending_txs: Default::default(),
         })
     }
 
@@ -191,6 +194,8 @@ pub struct NarwhalTransactionMiner {
     rx_pending_trans: Fuse<ReceiverStream<TxHash>>,
     rx_commited_trans: Fuse<UnboundedReceiverStream<Vec<ExternalTransaction>>>,
     commited_transactions: HashSet<Vec<u8>>,
+    /// Store pending transactions in original order
+    queue_pending_txs: VecDeque<Vec<u8>>,
 }
 
 // === impl NarwhalTransactionMiner ===
@@ -204,29 +209,44 @@ impl NarwhalTransactionMiner {
     where
         Pool: TransactionPool,
     {
-        // drain the notification stream
-        // while let Poll::Ready(Some(_hash)) = Pin::new(&mut self.rx).poll_next(cx) {
-        //     self.has_pending_txs = Some(true);
-        // }
-        if let Poll::Ready(Some(transactions)) = Pin::new(&mut self.rx_commited_trans).poll_next(cx)
+        while let Poll::Ready(Some(transactions)) =
+            Pin::new(&mut self.rx_commited_trans).poll_next(cx)
         {
             for ExternalTransaction { namespace, tx_bytes } in transactions.into_iter() {
                 self.commited_transactions.insert(tx_bytes);
             }
         }
-        info!("Commited transactions length {:?}", self.commited_transactions.len());
-        if self.commited_transactions.len() == 0 {
-            return Poll::Pending;
+        // drain the notification stream
+        while let Poll::Ready(Some(hash)) = Pin::new(&mut self.rx_pending_trans).poll_next(cx) {
+            self.queue_pending_txs.push_back(hash.as_slice().to_vec());
+            //self.has_pending_txs = Some(true);
         }
 
-        // let transactions = pool.best_transactions().take(self.max_transactions).collect::<Vec<_>>();
-        let transactions = pool
-            .best_transactions()
-            .filter(|item| self.commited_transactions.remove(&item.hash().as_slice().to_vec()))
-            .collect::<Vec<_>>();
-        info!("Transactions from pool with commit from consensus {:?}", &transactions);
-        // there are pending transactions if we didn't drain the pool
-        // self.has_pending_txs = Some(transactions.len() >= self.max_transactions);
+        info!(
+            "pending queue {:?}, commited transaction count {:?}",
+            self.queue_pending_txs.len(),
+            self.commited_transactions.len()
+        );
+        if self.queue_pending_txs.len() > self.commited_transactions.len() {
+            return Poll::Pending;
+        }
+        info!("Commited transactions length {:?}", self.commited_transactions.len());
+        let mut tx_counter = 0;
+
+        while let Some(tx_hash) = self.queue_pending_txs.get(0) {
+            if self.commited_transactions.remove(tx_hash) {
+                tx_counter += 1;
+                self.queue_pending_txs.pop_front();
+            } else {
+                break;
+            }
+        }
+        if tx_counter == 0 {
+            return Poll::Pending;
+        }
+        info!("tx_counter {:?}", tx_counter);
+        let transactions = pool.best_transactions().take(tx_counter).collect::<Vec<_>>();
+        info!("Found {:?} transactions for the next block", transactions.len());
         if transactions.is_empty() {
             return Poll::Pending;
         }
