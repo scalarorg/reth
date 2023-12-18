@@ -1,9 +1,7 @@
+use crate::config::ClusterTestOpt;
 use crate::reth_cluster::{TestCluster, TestClusterBuilder};
 use anyhow::Ok;
 use async_trait::async_trait;
-use tracing::info;
-
-use crate::config::ClusterTestOpt;
 
 pub struct ClusterFactory;
 
@@ -57,42 +55,38 @@ impl Cluster for RemoteRunningCluster {
 pub struct LocalNewCluster {
     test_cluster: TestCluster,
     fullnode_url: String,
-    handles: Vec<tokio::task::JoinHandle<()>>,
-    tx_shutdowns: Vec<tokio::sync::watch::Sender<()>>,
+    handle: tokio::task::JoinHandle<()>,
+    tx_shutdown: tokio::sync::watch::Sender<()>,
 }
 
 #[async_trait]
 impl Cluster for LocalNewCluster {
     async fn start(options: &ClusterTestOpt) -> Result<Self, anyhow::Error> {
         let mut cluster_builder = TestClusterBuilder::new();
-        let mut handles = vec![];
-        let mut tx_shutdowns = vec![];
 
-        for instance in 1..=options.nodes {
-            cluster_builder
-                .narwhal_port(options.narwhal_port.clone())
-                .chain(options.chain.clone())
-                .instance(instance);
-            let mut test_cluster = cluster_builder.build();
+        cluster_builder.narwhal_port(options.narwhal_port.clone()).chain(options.chain.clone());
 
-            let (tx_shutdown, mut rx_shutdown) = tokio::sync::watch::channel::<()>(());
-
-            *rx_shutdown.borrow_and_update();
-
-            let handle = tokio::task::spawn_blocking(move || {
-                test_cluster.start(rx_shutdown).expect("Failed to start cluster");
-            });
-
-            handles.push(handle);
-            tx_shutdowns.push(tx_shutdown);
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        if options.instance.is_some() {
+            cluster_builder.instance(options.instance.unwrap());
         }
+
+        let mut test_cluster = cluster_builder.build();
+
+        let (tx_shutdown, mut rx_shutdown) = tokio::sync::watch::channel::<()>(());
+
+        // Get the initial value from the watch channel
+        #[allow(clippy::unnecessary_operation)]
+        *rx_shutdown.borrow_and_update();
+
+        let handle = tokio::task::spawn_blocking(move || {
+            test_cluster.start(rx_shutdown).expect("Failed to start cluster");
+        });
 
         let test_cluster = cluster_builder.chain(options.chain.clone()).build();
 
         let fullnode_url = test_cluster.fullnode_url().to_string();
 
-        Ok(Self { fullnode_url, test_cluster, handles, tx_shutdowns })
+        Ok(Self { fullnode_url, test_cluster, handle, tx_shutdown })
     }
 
     fn fullnode_url(&self) -> &str {
@@ -100,16 +94,9 @@ impl Cluster for LocalNewCluster {
     }
 
     async fn shutdown(&mut self) -> Result<(), anyhow::Error> {
-        for tx in self.tx_shutdowns.drain(..) {
-            tx.send(()).expect("Should send shutdown signal to cluster");
-        }
-
-        info!("Waiting for cluster to shutdown...");
-        // TODO: Improve the shutdown process
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        for handle in &self.handles {
-            handle.abort();
-        }
+        self.tx_shutdown.send(()).expect("Should send shutdown signal to cluster");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        self.handle.abort();
 
         Ok(())
     }

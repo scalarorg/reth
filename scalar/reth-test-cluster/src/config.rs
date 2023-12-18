@@ -11,6 +11,7 @@ pub struct ClusterTestOpt {
     pub receiver_address: String,
     pub transaction_amount: u64,
     pub narwhal_port: Option<String>,
+    pub instance: Option<u8>,
 }
 
 impl ClusterTestOpt {
@@ -48,5 +49,13 @@ impl ClusterTestOpt {
 
     pub fn narwhal_port(&self) -> &Option<String> {
         &self.narwhal_port
+    }
+
+    pub fn instance(&self) -> &Option<u8> {
+        &self.instance
+    }
+
+    pub fn set_instance(&mut self, instance: u8) {
+        self.instance = Some(instance);
     }
 }

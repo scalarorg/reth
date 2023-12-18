@@ -14,22 +14,44 @@ pub mod wallet_client;
 #[allow(unused)]
 pub struct TestContext {
     /// Cluster handle that allows access to various components in a cluster
-    cluster: Box<dyn Cluster + Sync + Send>,
+    clusters: Vec<Box<dyn Cluster + Sync + Send>>,
     /// Client that provides wallet context and fullnode access
-    client: WalletClient,
+    clients: Vec<WalletClient>,
     options: ClusterTestOpt,
 }
 
 impl TestContext {
-    pub async fn setup(options: ClusterTestOpt) -> Result<Self, anyhow::Error> {
-        let cluster = ClusterFactory::start(&options).await?;
+    pub async fn setup(mut options: ClusterTestOpt) -> Result<Self, anyhow::Error> {
+        let mut clusters = vec![];
+        for instance in 1..=options.nodes() {
+            options.set_instance(instance);
+            let cluster = ClusterFactory::start(&options).await?;
+            clusters.push(cluster);
+
+            // Sleep for a bit to allow the cluster to start up
+            // TODO: Use a better way to check if the cluster is up and running
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
 
         // Sleep for a bit to allow the cluster to start up
         // TODO: Use a better way to check if the cluster is up and running
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
-        let wallet_client = WalletClient::new_from_cluster(&cluster, &options).await;
-        Ok(Self { cluster, client: wallet_client, options })
+        let mut wallet_clients = vec![];
+
+        for cluster in &clusters {
+            let wallet_client = WalletClient::new_from_cluster(cluster.as_ref(), &options).await;
+            wallet_clients.push(wallet_client);
+        }
+
+        Ok(Self { clusters, clients: wallet_clients, options })
+    }
+
+    pub async fn shutdown(&mut self) -> Result<(), anyhow::Error> {
+        for cluster in &mut self.clusters {
+            cluster.shutdown().await?;
+        }
+        Ok(())
     }
 }
 
@@ -57,7 +79,7 @@ impl ClusterTest {
         }
         info!("{success_cnt} of {total_cnt} tests passed.");
 
-        ctx.cluster.shutdown().await.unwrap_or_else(|e| {
+        ctx.shutdown().await.unwrap_or_else(|e| {
             error!("Failed to shutdown cluster: {e}");
         });
     }
