@@ -14,7 +14,7 @@ use std::{
 };
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use super::{ScalarMiningMode, Storage};
 
@@ -127,8 +127,15 @@ where
                     match storage.build_and_execute(transactions.clone(), &client, chain_spec) {
                         Ok((new_header, bundle_state)) => {
                             // clear all transactions from pool
-                            pool.remove_transactions(
+                            let pool_size_before_execution = pool.best_transactions().count();
+                            let tran_size = transactions.len();
+                            let removed_txs = pool.remove_transactions(
                                 transactions.iter().map(|tx| tx.hash()).collect(),
+                            );
+                            let pool_size = pool.best_transactions().count();
+                            info!(
+                                "Before size {:?}, txs size {:?} removed txs size {:?} after size {:?}",
+                                pool_size_before_execution, tran_size, removed_txs.len(), pool_size
                             );
 
                             let state = ForkchoiceState {
