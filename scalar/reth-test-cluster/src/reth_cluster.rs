@@ -55,6 +55,8 @@ impl TestCluster {
 
         let node_cmd = NodeCommand::<()>::try_parse_from([
             "reth node",
+            "--chain",
+            self.chain.as_str(),
             "--http",
             "--http.addr",
             self.http_addr.as_str(),
@@ -83,8 +85,6 @@ impl TestCluster {
             // self.auth_jwt_secret.as_str(),
             "--instance",
             self.instance.to_string().as_str(),
-            "--chain",
-            self.chain.as_str(),
             "--narwhal",
             "--narwhal.port",
             self.narwhal_port.as_ref().unwrap_or(&"9090".to_string()).as_str(),

@@ -39,6 +39,7 @@ async fn send_transaction_raw(client: &WalletClient, options: &ClusterTestOpt) {
         .as_u64();
 
     let transaction_amount = options.transaction_amount();
+    // let transaction_amount = options.transaction_amount() * client.get_index() as u64;
 
     let max_nonce = transaction_count + transaction_amount;
 
@@ -48,7 +49,7 @@ async fn send_transaction_raw(client: &WalletClient, options: &ClusterTestOpt) {
     );
 
     for nonce in transaction_count..max_nonce {
-        info!("{:?}: Sending transaction with nonce {}", options.instance, nonce);
+        info!("Instance {:?}: Sending transaction with nonce {}", client.get_index(), nonce);
         let tx = client.create_transaction(sender_address, 100000u64.into(), nonce).into();
 
         let signature = client.sign(&tx).await.expect("Should sign transaction");
@@ -62,4 +63,7 @@ async fn send_transaction_raw(client: &WalletClient, options: &ClusterTestOpt) {
 
         assert!(result.tx_hash().to_string().starts_with("0x"), "invalid tx hash");
     }
+
+    // Sleep a bit to allow the transactions to be processed
+    // tokio::time::sleep(std::time::Duration::from_secs((client.get_index() * 2).into())).await;
 }

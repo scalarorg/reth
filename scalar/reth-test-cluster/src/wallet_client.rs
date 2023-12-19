@@ -10,6 +10,7 @@ pub struct WalletClient {
     wallet_context: Wallet<SigningKey>,
     address: String,
     provider: Provider<Http>,
+    index: u32,
 }
 
 impl WalletClient {
@@ -37,7 +38,7 @@ impl WalletClient {
 
         let address = format!("{address:#20x}");
 
-        Self { wallet_context, address, provider }
+        Self { wallet_context, address, provider, index }
     }
 
     pub fn get_wallet(&self) -> &Wallet<SigningKey> {
@@ -56,6 +57,10 @@ impl WalletClient {
         &self.provider
     }
 
+    pub fn get_index(&self) -> u32 {
+        self.index
+    }
+
     pub async fn sign(&self, tx: &TypedTransaction) -> Result<Signature, WalletError> {
         self.wallet_context.sign_transaction(tx).await
     }
@@ -67,7 +72,7 @@ impl WalletClient {
             .nonce(nonce)
             .value(value)
             .gas(100000)
-            .gas_price(0x4342342)
+            .gas_price(0x43423422)
             .chain_id(chain_id)
     }
 }
