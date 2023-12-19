@@ -6,7 +6,10 @@ use clap::Args;
 use reth_beacon_consensus::BeaconConsensusEngineHandle;
 use reth_rpc::JwtSecret;
 
-use crate::consensus::{ScalarConsensus, ScalarConsensusHandles, DEFAULT_NARWHAL_PORT};
+use crate::consensus::{
+    ScalarConsensus, ScalarConsensusHandles, DEFAULT_BLOCK_TIME, DEFAULT_MAX_BLOCK_TRANSACTIONS,
+    DEFAULT_NARWHAL_PORT,
+};
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 use tracing::info;
@@ -25,6 +28,14 @@ pub struct ConsensusArgs {
     /// Http server port to listen on
     #[arg(long = "narwhal.port", default_value_t = DEFAULT_NARWHAL_PORT)]
     pub narwhal_port: u16,
+
+    /// Time out for seal a new block with lackof transactions
+    #[arg(long = "narwhal.blocktime", default_value_t = DEFAULT_BLOCK_TIME)]
+    pub narwhal_blocktime: u32,
+
+    /// Maximum number of transactions included in a block
+    #[arg(long = "narwhal.max_transactions", default_value_t = DEFAULT_MAX_BLOCK_TRANSACTIONS)]
+    pub narwhal_max_transactions: u32,
 }
 // impl ConsensusArgs {
 //     /// Configures and launches _all_ servers.

@@ -15,7 +15,7 @@ use reth_transaction_pool::{
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::mpsc::{Receiver, UnboundedSender};
+use tokio::sync::mpsc::{self, Receiver, UnboundedSender};
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info};
 
@@ -75,7 +75,6 @@ pub struct ScalarBuilder<Client, Pool> {
     storage: Storage,
     to_engine: UnboundedSender<BeaconEngineMessage>,
     canon_state_notification: CanonStateNotificationSender,
-    tx_commited_transactions: UnboundedSender<Vec<ExternalTransaction>>,
     consensus_args: ConsensusArgs,
 }
 
@@ -92,8 +91,6 @@ where
         pool: Pool,
         to_engine: UnboundedSender<BeaconEngineMessage>,
         canon_state_notification: CanonStateNotificationSender,
-        mode: ScalarMiningMode,
-        tx_commited_transactions: UnboundedSender<Vec<ExternalTransaction>>,
         consensus_args: ConsensusArgs,
     ) -> Self {
         let latest_header = client
@@ -101,7 +98,7 @@ where
             .ok()
             .flatten()
             .unwrap_or_else(|| chain_spec.sealed_genesis_header());
-
+        let mode = ScalarMiningMode::narwhal();
         Self {
             storage: Storage::new(latest_header),
             client,
@@ -110,7 +107,6 @@ where
             mode,
             to_engine,
             canon_state_notification,
-            tx_commited_transactions,
             consensus_args,
         }
     }
@@ -132,12 +128,12 @@ where
             storage,
             to_engine,
             canon_state_notification,
-            tx_commited_transactions,
             consensus_args,
         } = self;
         let rx_pending_transaction = pool.pending_transactions_listener();
         let auto_client = ScalarClient::new(storage.clone());
-
+        let (tx_commited_transactions, rx_commited_transactions) =
+            mpsc::unbounded_channel::<Vec<ExternalTransaction>>();
         let task = ScalarMiningTask::new(
             Arc::clone(&consensus.chain_spec),
             mode,
@@ -146,6 +142,7 @@ where
             storage,
             client,
             pool,
+            rx_commited_transactions,
         );
         /*
          * 2023-12-15 Taivv
