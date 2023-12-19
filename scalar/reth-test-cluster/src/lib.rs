@@ -23,26 +23,22 @@ pub struct TestContext {
 impl TestContext {
     pub async fn setup(mut options: ClusterTestOpt) -> Result<Self, anyhow::Error> {
         let mut clusters = vec![];
+        let mut wallet_clients = vec![];
         for instance in 1..=options.nodes() {
             options.set_instance(instance);
             let cluster = ClusterFactory::start(&options).await?;
-            clusters.push(cluster);
 
             // Sleep for a bit to allow the cluster to start up
             // TODO: Use a better way to check if the cluster is up and running
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let wallet_client = WalletClient::new_from_cluster(cluster.as_ref(), &options).await;
+            wallet_clients.push(wallet_client);
+            clusters.push(cluster);
         }
 
         // Sleep for a bit to allow the cluster to start up
         // TODO: Use a better way to check if the cluster is up and running
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-
-        let mut wallet_clients = vec![];
-
-        for cluster in &clusters {
-            let wallet_client = WalletClient::new_from_cluster(cluster.as_ref(), &options).await;
-            wallet_clients.push(wallet_client);
-        }
 
         Ok(Self { clusters, clients: wallet_clients, options })
     }
