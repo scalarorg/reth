@@ -1,0 +1,28 @@
+[package]
+name = "reth-test-cluster"
+version = "0.1.0"
+authors = ["Duc Huong Nguyen <huong@codelight.co>"]
+license = "Apache-2.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+futures.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tracing.workspace = true
+clap.workspace = true
+async-trait.workspace = true
+anyhow = "1.0.71"
+telemetry-subscribers = { git = "https://github.com/MystenLabs/sui", rev = "01a8af7fca6aa8d24cdafad87a1191e06ac75af8", package = "telemetry-subscribers" }
+derivative = "2.2.0"
+tempfile.workspace = true
+ethers = { version = "2.0", features = ["rustls"] }
+dotenvy = { version = "0.15", default-features = false }
+envy = "0.4"
+jsonrpsee.workspace = true
+rand.workspace = true
+scalar-reth.workspace = true
+reth-tasks.workspace = true
+eyre.workspace = true

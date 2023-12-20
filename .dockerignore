@@ -23,3 +23,8 @@
 
 # include example files
 !/examples
+
+# HuongND 20231214
+# include the .env file & test genesis file
+!.env
+!test-genesis.json

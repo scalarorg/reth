@@ -56,6 +56,8 @@ members = [
     "examples/trace-transaction-cli/",
     "testing/ef-tests/",
     "scalar/reth-node",
+    # HuongND 20231213: add reth-test-cluster
+    "scalar/reth-test-cluster",
 ]
 default-members = ["bin/reth"]
 
@@ -228,3 +230,7 @@ pprof = "0.13"
 proptest = "1.0"
 proptest-derive = "0.4"
 serial_test = "2"
+
+# HuongND 20231213: add reth-test-cluster
+reth-test-cluster = { path = "scalar/reth-test-cluster" }
+scalar-reth = { path = "scalar/reth-node" }
