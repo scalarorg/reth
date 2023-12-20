@@ -452,12 +452,20 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
             (pipeline, EitherDownloader::AutoSeal(client))
         } else if self.consensus.narwhal {
             info!(target: "reth::cli", "Starting Reth with narwhal consensus");
+            let (tx_commited_transactions, rx_commited_transactions) =
+                mpsc::unbounded_channel::<Vec<ExternalTransaction>>();
+            let mining_mode = ScalarMiningMode::narwhal(
+                transaction_pool.pending_transactions_listener(),
+                rx_commited_transactions,
+            );
             let (_, client, mut task) = ScalarBuilder::new(
                 Arc::clone(&self.chain),
                 blockchain_db.clone(),
                 transaction_pool.clone(),
+                mining_mode,
                 consensus_engine_tx.clone(),
                 canon_state_notification_sender,
+                tx_commited_transactions,
                 self.consensus.clone(),
             )
             .build();
