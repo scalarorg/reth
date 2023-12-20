@@ -1,5 +1,6 @@
 use crate::proto::{ConsensusApiClient, ExternalTransaction};
 use crate::{CommitedTransactions, NAMESPACE};
+use backon::{ExponentialBuilder, Retryable};
 use reth_beacon_consensus::{BeaconConsensusEngineHandle, BeaconEngineMessage};
 use reth_interfaces::consensus::{Consensus, ConsensusError};
 use reth_primitives::{
@@ -134,8 +135,9 @@ where
             tx_commited_transactions,
             consensus_args,
         } = self;
-        let rx_pending_transaction = pool.pending_transactions_listener();
         let auto_client = ScalarClient::new(storage.clone());
+
+        let tx_pool = pool.clone();
 
         let task = ScalarMiningTask::new(
             Arc::clone(&consensus.chain_spec),
@@ -153,54 +155,69 @@ where
         let ConsensusArgs { narwhal_addr, narwhal_port, .. } = consensus_args;
         let socket_address = SocketAddr::new(narwhal_addr, narwhal_port);
 
-        start_consensus_client(socket_address, rx_pending_transaction, tx_commited_transactions);
+        tokio::spawn(async move {
+            (move || {
+                start_consensus_client(
+                    socket_address,
+                    tx_pool.clone(),
+                    tx_commited_transactions.clone(),
+                )
+            })
+            .retry(&ExponentialBuilder::default().with_max_times(100_000))
+            .notify(|err, _| error!("Scalar consensus client error: {}. Retrying...", err))
+            .await
+        });
         (consensus, auto_client, task)
     }
 }
 
-fn start_consensus_client(
+async fn start_consensus_client<Pool>(
     socket_addr: SocketAddr,
-    mut rx_pending_transaction: Receiver<TxHash>,
+    tx_pool: Pool,
     tx_commited_transactions: UnboundedSender<Vec<ExternalTransaction>>,
-) {
-    tokio::spawn(async move {
-        let url = format!("http://{}", socket_addr);
-        let mut client = ConsensusApiClient::connect(url).await.unwrap();
-        //let handler = ScalarConsensus { beacon_consensus_engine_handle };
-        info!("Connected to the grpc consensus server at {:?}", &socket_addr);
-        //let in_stream = tokio_stream::wrappers::ReceiverStream::new(transaction_rx)
-        let stream = async_stream::stream! {
-            while let Some(tx_hash) = rx_pending_transaction.recv().await {
-                /*
-                 * 231129 TaiVV
-                 * Scalar TODO: convert transaction to ConsensusTransactionIn
-                 */
-                let tx_bytes = tx_hash.as_slice().to_vec();
-                debug!("Receive a pending transaction hash, send it into narwhal consensus {:?}", &tx_bytes);
-                let consensus_transaction = ExternalTransaction { namespace: NAMESPACE.to_owned(), tx_bytes };
-                yield consensus_transaction;
-            }
-        };
-        //pin_mut!(stream);
-        let stream = Box::pin(stream);
-        let response = client.init_transaction(stream).await.unwrap();
-        let mut resp_stream = response.into_inner();
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    Pool: TransactionPool + 'static,
+{
+    let url = format!("http://{}", socket_addr);
+    let mut client = ConsensusApiClient::connect(url).await?;
+    //let handler = ScalarConsensus { beacon_consensus_engine_handle };
+    info!("Connected to the grpc consensus server at {:?}", &socket_addr);
+    let mut rx_pending_transaction = tx_pool.pending_transactions_listener();
+    //let in_stream = tokio_stream::wrappers::ReceiverStream::new(transaction_rx)
+    let stream = async_stream::stream! {
+        while let Some(tx_hash) = rx_pending_transaction.recv().await {
+            /*
+             * 231129 TaiVV
+             * Scalar TODO: convert transaction to ConsensusTransactionIn
+             */
+            let tx_bytes = tx_hash.as_slice().to_vec();
+            debug!("Receive a pending transaction hash, send it into narwhal consensus {:?}", &tx_bytes);
+            let consensus_transaction = ExternalTransaction { namespace: NAMESPACE.to_owned(), tx_bytes };
+            yield consensus_transaction;
+        }
+    };
+    //pin_mut!(stream);
+    let stream = Box::pin(stream);
+    let response = client.init_transaction(stream).await?;
+    let mut resp_stream = response.into_inner();
 
-        while let Some(received) = resp_stream.next().await {
-            match received {
-                Ok(CommitedTransactions { transactions }) => {
-                    info!("Received {:?} commited transactions.", transactions.len());
-                    if let Err(err) = tx_commited_transactions.send(transactions) {
-                        error!("{:?}", err);
-                    }
-                    //let _ = handler.handle_commited_transactions(transactions).await;
-                }
-                Err(err) => {
+    while let Some(received) = resp_stream.next().await {
+        match received {
+            Ok(CommitedTransactions { transactions }) => {
+                info!("Received {:?} commited transactions.", transactions.len());
+                if let Err(err) = tx_commited_transactions.send(transactions) {
                     error!("{:?}", err);
                 }
+                //let _ = handler.handle_commited_transactions(transactions).await;
+            }
+            Err(err) => {
+                return Err(Box::new(err));
             }
         }
-    });
+    }
+
+    Ok(())
 }
 
 fn create_consensus_transaction<Pool: PoolTransaction + 'static>(
