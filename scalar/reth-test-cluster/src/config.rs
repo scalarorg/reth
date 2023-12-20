@@ -12,6 +12,7 @@ pub struct ClusterTestOpt {
     pub transaction_amount: u64,
     pub narwhal_port: Option<String>,
     pub instance: Option<u8>,
+    pub wait_time_ms: Option<u64>,
 }
 
 impl ClusterTestOpt {
@@ -57,5 +58,13 @@ impl ClusterTestOpt {
 
     pub fn set_instance(&mut self, instance: u8) {
         self.instance = Some(instance);
+    }
+
+    pub fn wait_time_ms(&self) -> u64 {
+        if self.wait_time_ms.is_none() {
+            return 20000;
+        }
+
+        self.wait_time_ms.unwrap()
     }
 }
