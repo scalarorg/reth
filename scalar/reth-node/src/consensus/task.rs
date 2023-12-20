@@ -1,20 +1,28 @@
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
 use reth_beacon_consensus::{BeaconEngineMessage, ForkchoiceStatus};
 use reth_interfaces::consensus::ForkchoiceState;
-use reth_primitives::{Block, ChainSpec, IntoRecoveredTransaction, SealedBlockWithSenders};
+use reth_primitives::{
+    revm_primitives::HashSet, Block, ChainSpec, IntoRecoveredTransaction, SealedBlockWithSenders,
+};
 use reth_provider::{CanonChainTracker, CanonStateNotificationSender, Chain, StateProviderFactory};
 use reth_stages::PipelineEvent;
 use reth_transaction_pool::{TransactionPool, ValidPoolTransaction};
 use std::{
     collections::VecDeque,
+    f32::consts::E,
     future::Future,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
-use tokio::sync::{mpsc::UnboundedSender, oneshot};
+use tokio::sync::{
+    mpsc::{UnboundedReceiver, UnboundedSender},
+    oneshot,
+};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, error, info, warn};
+
+use crate::ExternalTransaction;
 
 use super::{ScalarMiningMode, Storage};
 
@@ -25,7 +33,7 @@ pub struct ScalarMiningTask<Client, Pool: TransactionPool> {
     /// The client used to interact with the state
     client: Client,
     /// The active miner
-    miner: ScalarMiningMode,
+    miner: ScalarMiningMode<Pool>,
     /// Single active future that inserts a new block into `storage`
     insert_task: Option<BoxFuture<'static, Option<UnboundedReceiverStream<PipelineEvent>>>>,
     /// Shared storage to insert new blocks
@@ -48,7 +56,7 @@ impl<Client, Pool: TransactionPool> ScalarMiningTask<Client, Pool> {
     /// Creates a new instance of the task
     pub(crate) fn new(
         chain_spec: Arc<ChainSpec>,
-        miner: ScalarMiningMode,
+        miner: ScalarMiningMode<Pool>,
         to_engine: UnboundedSender<BeaconEngineMessage>,
         canon_state_notification: CanonStateNotificationSender,
         storage: Storage,
@@ -127,15 +135,8 @@ where
                     match storage.build_and_execute(transactions.clone(), &client, chain_spec) {
                         Ok((new_header, bundle_state)) => {
                             // clear all transactions from pool
-                            let pool_size_before_execution = pool.best_transactions().count();
-                            let tran_size = transactions.len();
-                            let removed_txs = pool.remove_transactions(
+                            pool.remove_transactions(
                                 transactions.iter().map(|tx| tx.hash()).collect(),
-                            );
-                            let pool_size = pool.best_transactions().count();
-                            info!(
-                                "Before size {:?}, txs size {:?} removed txs size {:?} after size {:?}",
-                                pool_size_before_execution, tran_size, removed_txs.len(), pool_size
                             );
 
                             let state = ForkchoiceState {

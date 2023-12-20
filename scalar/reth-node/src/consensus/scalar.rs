@@ -15,7 +15,7 @@ use reth_transaction_pool::{
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::mpsc::{Receiver, UnboundedSender};
+use tokio::sync::mpsc::{self, Receiver, UnboundedReceiver, UnboundedSender};
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info};
 
@@ -67,11 +67,11 @@ impl Consensus for ScalarConsensus {
 
 /// Builder type for configuring the setup
 #[derive(Debug)]
-pub struct ScalarBuilder<Client, Pool> {
+pub struct ScalarBuilder<Client, Pool: TransactionPool> {
     client: Client,
     consensus: ScalarConsensus,
     pool: Pool,
-    mode: ScalarMiningMode,
+    mode: ScalarMiningMode<Pool>,
     storage: Storage,
     to_engine: UnboundedSender<BeaconEngineMessage>,
     canon_state_notification: CanonStateNotificationSender,
@@ -90,9 +90,9 @@ where
         chain_spec: Arc<ChainSpec>,
         client: Client,
         pool: Pool,
+        mode: ScalarMiningMode<Pool>,
         to_engine: UnboundedSender<BeaconEngineMessage>,
         canon_state_notification: CanonStateNotificationSender,
-        mode: ScalarMiningMode,
         tx_commited_transactions: UnboundedSender<Vec<ExternalTransaction>>,
         consensus_args: ConsensusArgs,
     ) -> Self {
@@ -101,7 +101,6 @@ where
             .ok()
             .flatten()
             .unwrap_or_else(|| chain_spec.sealed_genesis_header());
-
         Self {
             storage: Storage::new(latest_header),
             client,
@@ -116,7 +115,7 @@ where
     }
 
     /// Sets the [MiningMode] it operates in, default is [MiningMode::Auto]
-    pub fn mode(mut self, mode: ScalarMiningMode) -> Self {
+    pub fn mode(mut self, mode: ScalarMiningMode<Pool>) -> Self {
         self.mode = mode;
         self
     }

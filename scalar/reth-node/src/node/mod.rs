@@ -478,9 +478,9 @@ impl<Ext: RethCliExt> NodeCommand<Ext> {
                 Arc::clone(&self.chain),
                 blockchain_db.clone(),
                 transaction_pool.clone(),
+                mining_mode,
                 consensus_engine_tx.clone(),
                 canon_state_notification_sender,
-                mining_mode,
                 tx_commited_transactions,
                 self.consensus.clone(),
             )

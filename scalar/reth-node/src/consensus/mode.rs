@@ -1,9 +1,7 @@
 //! The mode the auto seal miner is operating in.
 
-use crate::ExternalTransaction;
 use futures_util::{stream::Fuse, StreamExt};
-use reth_db::mdbx::tx;
-use reth_primitives::{revm_primitives::HashSet, TxHash};
+use reth_primitives::TxHash;
 use reth_transaction_pool::{TransactionPool, ValidPoolTransaction};
 use std::{
     collections::VecDeque,
@@ -14,19 +12,23 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::mpsc::{Receiver, UnboundedReceiver},
+    sync::{
+        mpsc::{Receiver, UnboundedReceiver},
+        RwLock,
+    },
     time::Interval,
 };
 use tokio_stream::{
     wrappers::{ReceiverStream, UnboundedReceiverStream},
     Stream,
 };
-use tower_http::follow_redirect::policy::PolicyExt;
 use tracing::info;
+
+use crate::ExternalTransaction;
 
 /// Mode of operations for the `Miner`
 #[derive(Debug)]
-pub enum ScalarMiningMode {
+pub enum ScalarMiningMode<Pool: TransactionPool> {
     /// A miner that does nothing
     None,
     /// A miner that listens for new transactions that are ready.
@@ -35,14 +37,14 @@ pub enum ScalarMiningMode {
     /// allowed
     Auto(ReadyTransactionMiner),
     /// A miner that listens commited transactions from external Narwhal consensus
-    Narwhal(NarwhalTransactionMiner),
+    Narwhal(NarwhalTransactionMiner<Pool>),
     /// A miner that constructs a new block every `interval` tick
     FixedBlockTime(FixedBlockTimeMiner),
 }
 
 // === impl MiningMode ===
 
-impl ScalarMiningMode {
+impl<Pool: TransactionPool> ScalarMiningMode<Pool> {
     /// Creates a new instant mining mode that listens for new transactions and tries to build
     /// non-empty blocks as soon as transactions arrive.
     pub fn instant(max_transactions: usize, listener: Receiver<TxHash>) -> Self {
@@ -56,16 +58,16 @@ impl ScalarMiningMode {
     /// Creates a new narwhal mining mode that listens for commited transactions from Narwhal consensus
     /// and tries to build non-empty blocks as soon as transactions arrive.
     pub fn narwhal(
-        rx_pending_trans: Receiver<TxHash>,
-        rx_commited_trans: UnboundedReceiver<Vec<ExternalTransaction>>,
+        rx_pending_transaction: Receiver<TxHash>,
+        rx_commited_transactions: UnboundedReceiver<Vec<ExternalTransaction>>,
     ) -> Self {
         ScalarMiningMode::Narwhal(NarwhalTransactionMiner {
             max_transactions: usize::MAX,
-            has_pending_txs: None,
-            rx_pending_trans: ReceiverStream::new(rx_pending_trans).fuse(),
-            rx_commited_trans: UnboundedReceiverStream::new(rx_commited_trans).fuse(),
-            commited_transactions: HashSet::default(),
-            queue_pending_txs: Default::default(),
+            // has_pending_txs: None,
+            rx_pending_transaction: ReceiverStream::new(rx_pending_transaction).fuse(),
+            rx_commited_transactions: UnboundedReceiverStream::new(rx_commited_transactions).fuse(),
+            pending_transaction_queue: Default::default(),
+            pending_commited_transactions: Default::default(),
         })
     }
 
@@ -75,7 +77,7 @@ impl ScalarMiningMode {
     }
 
     /// polls the Pool and returns those transactions that should be put in a block, if any.
-    pub(crate) fn poll<Pool>(
+    pub(crate) fn poll(
         &mut self,
         pool: &Pool,
         cx: &mut Context<'_>,
@@ -185,23 +187,23 @@ impl fmt::Debug for ReadyTransactionMiner {
 }
 
 /// A miner that Listens for new ready transactions
-pub struct NarwhalTransactionMiner {
+pub struct NarwhalTransactionMiner<Pool: TransactionPool> {
     /// how many transactions to mine per block
     max_transactions: usize,
-    /// stores whether there are pending transactions (if known)
-    has_pending_txs: Option<bool>,
+    // /// stores whether there are pending transactions (if known)
+    // has_pending_txs: Option<bool>,
     /// Receives hashes of transactions that are ready
-    rx_pending_trans: Fuse<ReceiverStream<TxHash>>,
-    rx_commited_trans: Fuse<UnboundedReceiverStream<Vec<ExternalTransaction>>>,
-    commited_transactions: HashSet<Vec<u8>>,
-    /// Store pending transactions in original order
-    queue_pending_txs: VecDeque<Vec<u8>>,
+    rx_pending_transaction: Fuse<ReceiverStream<TxHash>>,
+    rx_commited_transactions: Fuse<UnboundedReceiverStream<Vec<ExternalTransaction>>>,
+    pending_transaction_queue:
+        VecDeque<Arc<ValidPoolTransaction<<Pool as TransactionPool>::Transaction>>>,
+    pending_commited_transactions: VecDeque<Vec<ExternalTransaction>>,
 }
 
 // === impl NarwhalTransactionMiner ===
 
-impl NarwhalTransactionMiner {
-    fn poll<Pool>(
+impl<Pool: TransactionPool> NarwhalTransactionMiner<Pool> {
+    fn poll(
         &mut self,
         pool: &Pool,
         cx: &mut Context<'_>,
@@ -209,53 +211,54 @@ impl NarwhalTransactionMiner {
     where
         Pool: TransactionPool,
     {
-        while let Poll::Ready(Some(transactions)) =
-            Pin::new(&mut self.rx_commited_trans).poll_next(cx)
-        {
-            for ExternalTransaction { namespace, tx_bytes } in transactions.into_iter() {
-                self.commited_transactions.insert(tx_bytes);
-            }
-        }
         // drain the notification stream
-        while let Poll::Ready(Some(hash)) = Pin::new(&mut self.rx_pending_trans).poll_next(cx) {
-            self.queue_pending_txs.push_back(hash.as_slice().to_vec());
-            //self.has_pending_txs = Some(true);
-        }
-
-        info!(
-            "pending queue {:?}, commited transaction count {:?}",
-            self.queue_pending_txs.len(),
-            self.commited_transactions.len()
-        );
-        if self.queue_pending_txs.len() > self.commited_transactions.len() {
-            return Poll::Pending;
-        }
-        info!("Commited transactions length {:?}", self.commited_transactions.len());
-        let mut tx_counter = 0;
-
-        while let Some(tx_hash) = self.queue_pending_txs.get(0) {
-            if self.commited_transactions.remove(tx_hash) {
-                tx_counter += 1;
-                self.queue_pending_txs.pop_front();
-            } else {
-                break;
+        while let Poll::Ready(Some(tx_hash)) =
+            Pin::new(&mut self.rx_pending_transaction).poll_next(cx)
+        {
+            //let guard = self.pending_transaction_queue.write().await;
+            if let Some(transaction) = pool.get(&tx_hash) {
+                info!("Pending transaction {:?}", transaction.nonce());
+                self.pending_transaction_queue.push_back(transaction);
             }
         }
-        if tx_counter == 0 {
-            return Poll::Pending;
-        }
-        info!("tx_counter {:?}", tx_counter);
-        let transactions = pool.best_transactions().take(tx_counter).collect::<Vec<_>>();
-        info!("Found {:?} transactions for the next block", transactions.len());
-        if transactions.is_empty() {
-            return Poll::Pending;
-        }
 
-        Poll::Ready(transactions)
+        while let Poll::Ready(Some(comitted_transactions)) =
+            Pin::new(&mut self.rx_commited_transactions).poll_next(cx)
+        {
+            self.pending_commited_transactions.push_back(comitted_transactions);
+        }
+        let mut transactions = vec![];
+        // let transactions = pool.best_transactions().collect::<Vec<_>>();
+
+        // there are pending transactions if we didn't drain the pool
+        // self.has_pending_txs = Some(transactions.len() >= self.max_transactions);
+        if let Some(commited_transactions) = self.pending_commited_transactions.get(0) {
+            if self.pending_transaction_queue.len() < commited_transactions.len() {
+                return Poll::Pending;
+            }
+            for tran in commited_transactions.iter() {
+                let queue_tran = self.pending_transaction_queue.pop_front().expect("non empty");
+                tracing::info!("Next queued transaction nonce {:?}", queue_tran.nonce());
+                if tran.tx_bytes.as_slice() != queue_tran.hash().as_slice() {
+                    tracing::warn!(
+                        "Transaction {} with commited hash are not match",
+                        queue_tran.nonce()
+                    );
+                }
+                transactions.push(queue_tran);
+            }
+            self.pending_commited_transactions.pop_front();
+            if transactions.is_empty() {
+                return Poll::Pending;
+            }
+            return Poll::Ready(transactions);
+        } else {
+            return Poll::Pending;
+        }
     }
 }
 
-impl fmt::Debug for NarwhalTransactionMiner {
+impl<Pool: TransactionPool> fmt::Debug for NarwhalTransactionMiner<Pool> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NarwhalTransactionMiner")
             .field("max_transactions", &self.max_transactions)
