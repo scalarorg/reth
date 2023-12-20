@@ -22,7 +22,7 @@ use tokio_stream::{
     wrappers::{ReceiverStream, UnboundedReceiverStream},
     Stream,
 };
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::ExternalTransaction;
 
@@ -233,20 +233,47 @@ impl<Pool: TransactionPool> NarwhalTransactionMiner<Pool> {
         // there are pending transactions if we didn't drain the pool
         // self.has_pending_txs = Some(transactions.len() >= self.max_transactions);
         if let Some(commited_transactions) = self.pending_commited_transactions.get(0) {
-            if self.pending_transaction_queue.len() < commited_transactions.len() {
-                return Poll::Pending;
-            }
-            for tran in commited_transactions.iter() {
-                let queue_tran = self.pending_transaction_queue.pop_front().expect("non empty");
-                tracing::info!("Next queued transaction nonce {:?}", queue_tran.nonce());
-                if tran.tx_bytes.as_slice() != queue_tran.hash().as_slice() {
-                    tracing::warn!(
-                        "Transaction {} with commited hash are not match",
-                        queue_tran.nonce()
-                    );
+            for transaction in commited_transactions.iter() {
+                //Find transaction in the pending queue with current hash
+                let mut index = 0;
+                let mut found = false;
+                loop {
+                    if let Some(tran) = self.pending_transaction_queue.get(index) {
+                        if tran.hash().as_slice() == transaction.tx_bytes.as_slice() {
+                            transactions.push(Arc::clone(tran));
+                            info!(
+                                "Found transaction with nonce {:?} and hash {:?}",
+                                tran.nonce(),
+                                &transaction.tx_bytes
+                            );
+                            found = true;
+                            break;
+                        } else {
+                            index += 1;
+                        }
+                    } else {
+                        break;
+                    }
                 }
-                transactions.push(queue_tran);
+                if found {
+                    self.pending_transaction_queue.remove(index);
+                } else {
+                    warn!("Missing transaction with hash {:?}", &transaction.tx_bytes);
+                    return Poll::Pending;
+                }
             }
+
+            // for tran in commited_transactions.iter() {
+            //     let queue_tran = self.pending_transaction_queue.pop_front().expect("non empty");
+            //     tracing::info!("Next queued transaction nonce {:?}", queue_tran.nonce());
+            //     if tran.tx_bytes.as_slice() != queue_tran.hash().as_slice() {
+            //         tracing::warn!(
+            //             "Transaction {} with commited hash are not match",
+            //             queue_tran.nonce()
+            //         );
+            //     }
+            //     transactions.push(queue_tran);
+            // }
             self.pending_commited_transactions.pop_front();
             if transactions.is_empty() {
                 return Poll::Pending;
