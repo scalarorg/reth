@@ -13,6 +13,7 @@ pub struct ClusterTestOpt {
     pub narwhal_port: Option<String>,
     pub instance: Option<u8>,
     pub wait_time_ms: Option<u64>,
+    pub keep_alive: Option<bool>,
 }
 
 impl ClusterTestOpt {
@@ -66,5 +67,13 @@ impl ClusterTestOpt {
         }
 
         self.wait_time_ms.unwrap()
+    }
+
+    pub fn keep_alive(&self) -> bool {
+        if self.keep_alive.is_none() {
+            return false;
+        }
+
+        self.keep_alive.unwrap()
     }
 }

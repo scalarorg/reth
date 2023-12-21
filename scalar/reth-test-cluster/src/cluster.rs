@@ -29,6 +29,10 @@ pub trait Cluster {
     async fn shutdown(&mut self) -> Result<(), anyhow::Error> {
         Ok(())
     }
+
+    fn get_cluster_handle(&mut self) -> Result<tokio::task::JoinHandle<()>, anyhow::Error> {
+        Ok(tokio::task::spawn(async move {}))
+    }
 }
 
 /// Represents an up and running cluster deployed remotely.
@@ -55,7 +59,7 @@ impl Cluster for RemoteRunningCluster {
 pub struct LocalNewCluster {
     test_cluster: TestCluster,
     fullnode_url: String,
-    handle: tokio::task::JoinHandle<()>,
+    handle: Option<tokio::task::JoinHandle<()>>,
     tx_shutdown: tokio::sync::watch::Sender<()>,
 }
 
@@ -86,7 +90,7 @@ impl Cluster for LocalNewCluster {
 
         let fullnode_url = test_cluster.fullnode_url().to_string();
 
-        Ok(Self { fullnode_url, test_cluster, handle, tx_shutdown })
+        Ok(Self { fullnode_url, test_cluster, handle: Some(handle), tx_shutdown })
     }
 
     fn fullnode_url(&self) -> &str {
@@ -96,9 +100,19 @@ impl Cluster for LocalNewCluster {
     async fn shutdown(&mut self) -> Result<(), anyhow::Error> {
         self.tx_shutdown.send(()).expect("Should send shutdown signal to cluster");
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        self.handle.abort();
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
 
         Ok(())
+    }
+
+    fn get_cluster_handle(&mut self) -> Result<tokio::task::JoinHandle<()>, anyhow::Error> {
+        if let Some(handle) = self.handle.take() {
+            return Ok(handle);
+        }
+
+        Err(anyhow::anyhow!("Cluster handle not found"))
     }
 }
 

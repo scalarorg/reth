@@ -9,6 +9,7 @@ pub mod cluster;
 pub mod config;
 pub mod reth_cluster;
 pub mod test_case;
+pub mod utils;
 pub mod wallet_client;
 
 #[allow(unused)]
@@ -31,7 +32,8 @@ impl TestContext {
             // Sleep for a bit to allow the cluster to start up
             // TODO: Use a better way to check if the cluster is up and running
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            let wallet_client = WalletClient::new_from_cluster(cluster.as_ref(), &options).await;
+            let wallet_client =
+                WalletClient::new_from_cluster_url(cluster.fullnode_url(), &options).await;
             wallet_clients.push(wallet_client);
             clusters.push(cluster);
         }
@@ -48,6 +50,24 @@ impl TestContext {
             cluster.shutdown().await?;
         }
         Ok(())
+    }
+
+    pub async fn keep_alive(&mut self) -> Result<(), anyhow::Error> {
+        // let mut handles = vec![];
+        // for cluster in &mut self.clusters {
+        //     let handle = cluster.get_cluster_handle()?;
+        //     handles.push(handle);
+        // }
+
+        // info!("Joining cluster handles");
+        // Join all handles
+        // join_all(handles).await;
+        // Ok(())
+
+        // TODO: Use a better way to keep the cluster alive
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
     }
 }
 
@@ -75,9 +95,17 @@ impl ClusterTest {
         }
         info!("{success_cnt} of {total_cnt} tests passed.");
 
-        ctx.shutdown().await.unwrap_or_else(|e| {
-            error!("Failed to shutdown cluster: {e}");
-        });
+        if ctx.options.keep_alive() {
+            info!("Keeping cluster alive.");
+            ctx.keep_alive().await.unwrap_or_else(|e| {
+                error!("Failed to keep cluster alive: {e}");
+            });
+        } else {
+            info!("Shutting down cluster.");
+            ctx.shutdown().await.unwrap_or_else(|e| {
+                error!("Failed to shutdown cluster: {e}");
+            });
+        }
     }
 }
 

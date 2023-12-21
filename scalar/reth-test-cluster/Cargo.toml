@@ -26,3 +26,7 @@ rand.workspace = true
 scalar-reth.workspace = true
 reth-tasks.workspace = true
 eyre.workspace = true
+
+[[bin]]
+name = "reth-test-client"
+path = "src/bin/reth_test_client.rs"
