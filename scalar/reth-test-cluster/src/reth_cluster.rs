@@ -3,6 +3,10 @@ use futures::pin_mut;
 use reth_tasks::TaskManager;
 use scalar_reth::node::NodeCommand;
 use scalar_reth::runner::{tokio_runtime, CliContext};
+use scalar_reth::transaction_pool::{
+    DEFAULT_PRICE_BUMP, REPLACE_BLOB_PRICE_BUMP, TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER,
+    TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT, TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
+};
 use std::future::Future;
 use tokio::sync::watch;
 use tracing::{info, trace};
@@ -22,6 +26,17 @@ pub struct TestCluster {
     instance: u8,
     chain: String,
     narwhal_port: Option<String>,
+
+    pending_max_count: usize,
+    pending_max_size: usize,
+    basefee_max_count: usize,
+    basefee_max_size: usize,
+    queued_max_count: usize,
+    queued_max_size: usize,
+    max_account_slots: usize,
+    price_bump: u128,
+    blob_transaction_price_bump: u128,
+    no_locals: bool,
 }
 
 // Metrics
@@ -52,6 +67,8 @@ impl TestCluster {
         //     // TODO: Chose a better way to turn off narwhal
         //     "--ws"
         // };
+
+        let no_local = if self.no_locals { "--txpool.nolocals" } else { "--" };
 
         let node_cmd = NodeCommand::<()>::try_parse_from([
             "reth node",
@@ -88,8 +105,29 @@ impl TestCluster {
             "--narwhal",
             "--narwhal.port",
             self.narwhal_port.as_ref().unwrap_or(&"9090".to_string()).as_str(),
+            // SCALAR-TODO: Find a way to get the bootnodes from local
             "--bootnodes",
             "enode://4901ba0085be8a1fb1e7725c4c6582668f5cd79e1da4a459207abf6afded09e41d23561d6a239183825bf14e80900c46f4c18d338095db79b4f2490c8fef81be@127.0.0.1:30303,enode://354f037e3fb7c2df27eb9de1f20f4a2f539e97379afd65de96c182637a86a1ae6f7bf8ffcf87eb3233839874449b3122f745139a85d055898bf7beef81f66d17@127.0.0.1:30304,enode://129a37d3192d394503ca3ca5ebeef2c6f63f04ad968cc79c222423aea1c3db633b5bf2d5538f39c8c1a103b2277c28df583d6c417dc928bf3fe7ecbb4e035ddc@127.0.0.1:30305,enode://17910578c735e05e3faee82e4890eaba8fac4cd6f6b94bd84c8c89bd6265024ff5f41aff1326d5f7b921092223385e937eb34fd101603eccfd88228433c2ccab@127.0.0.1:30306",
+            "--txpool.pending_max_count",
+            self.pending_max_count.to_string().as_str(),
+            "--txpool.pending_max_size",
+            self.pending_max_size.to_string().as_str(),
+            "--txpool.basefee_max_count",
+            self.basefee_max_count.to_string().as_str(),
+            "--txpool.basefee_max_size",
+            self.basefee_max_size.to_string().as_str(),
+            "--txpool.queued_max_count",
+            self.queued_max_count.to_string().as_str(),
+            "--txpool.queued_max_size",
+            self.queued_max_size.to_string().as_str(),
+            "--txpool.max_account_slots",
+            self.max_account_slots.to_string().as_str(),
+            "--txpool.pricebump",
+            self.price_bump.to_string().as_str(),
+            "--blobpool.pricebump",
+            self.blob_transaction_price_bump.to_string().as_str(),
+            // "--txpool.nolocals",
+            no_local,
         ])
         .expect("Parse node command");
 
@@ -147,6 +185,16 @@ pub struct TestClusterBuilder {
     instance: u8,
     chain: String,
     narwhal_port: Option<String>,
+    pending_max_count: usize,
+    pending_max_size: usize,
+    basefee_max_count: usize,
+    basefee_max_size: usize,
+    queued_max_count: usize,
+    queued_max_size: usize,
+    max_account_slots: usize,
+    price_bump: u128,
+    blob_transaction_price_bump: u128,
+    no_locals: bool,
 }
 
 impl Default for TestClusterBuilder {
@@ -165,6 +213,16 @@ impl Default for TestClusterBuilder {
             instance: DEFAULT_INSTANCE,
             chain: DEFAULT_CHAIN.to_string(),
             narwhal_port: None,
+            pending_max_count: TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
+            pending_max_size: TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT,
+            basefee_max_count: TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
+            basefee_max_size: TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT,
+            queued_max_count: TXPOOL_SUBPOOL_MAX_TXS_DEFAULT,
+            queued_max_size: TXPOOL_SUBPOOL_MAX_SIZE_MB_DEFAULT,
+            max_account_slots: TXPOOL_MAX_ACCOUNT_SLOTS_PER_SENDER,
+            price_bump: DEFAULT_PRICE_BUMP,
+            blob_transaction_price_bump: REPLACE_BLOB_PRICE_BUMP,
+            no_locals: false,
         }
     }
 }
@@ -256,6 +314,79 @@ impl TestClusterBuilder {
         self
     }
 
+    pub fn pending_max_count(&mut self, pending_max_count: Option<usize>) -> &mut Self {
+        if let Some(pending_max_count) = pending_max_count {
+            self.pending_max_count = pending_max_count;
+        }
+        self
+    }
+
+    pub fn pending_max_size(&mut self, pending_max_size: Option<usize>) -> &mut Self {
+        if let Some(pending_max_size) = pending_max_size {
+            self.pending_max_size = pending_max_size;
+        }
+        self
+    }
+
+    pub fn basefee_max_count(&mut self, basefee_max_count: Option<usize>) -> &mut Self {
+        if let Some(basefee_max_count) = basefee_max_count {
+            self.basefee_max_count = basefee_max_count;
+        }
+        self
+    }
+
+    pub fn basefee_max_size(&mut self, basefee_max_size: Option<usize>) -> &mut Self {
+        if let Some(basefee_max_size) = basefee_max_size {
+            self.basefee_max_size = basefee_max_size;
+        }
+        self
+    }
+
+    pub fn queued_max_count(&mut self, queued_max_count: Option<usize>) -> &mut Self {
+        if let Some(queued_max_count) = queued_max_count {
+            self.queued_max_count = queued_max_count;
+        }
+        self
+    }
+
+    pub fn queued_max_size(&mut self, queued_max_size: Option<usize>) -> &mut Self {
+        if let Some(queued_max_size) = queued_max_size {
+            self.queued_max_size = queued_max_size;
+        }
+        self
+    }
+
+    pub fn max_account_slots(&mut self, max_account_slots: Option<usize>) -> &mut Self {
+        if let Some(max_account_slots) = max_account_slots {
+            self.max_account_slots = max_account_slots;
+        }
+        self
+    }
+
+    pub fn price_bump(&mut self, price_bump: Option<u128>) -> &mut Self {
+        if let Some(price_bump) = price_bump {
+            self.price_bump = price_bump;
+        }
+        self
+    }
+
+    pub fn blob_transaction_price_bump(
+        &mut self,
+        blob_transaction_price_bump: Option<u128>,
+    ) -> &mut Self {
+        if let Some(blob_transaction_price_bump) = blob_transaction_price_bump {
+            self.blob_transaction_price_bump = blob_transaction_price_bump;
+        }
+        self
+    }
+
+    pub fn no_locals(&mut self, no_locals: Option<bool>) -> &mut Self {
+        if let Some(no_locals) = no_locals {
+            self.no_locals = no_locals;
+        }
+        self
+    }
+
     pub fn build(&self) -> TestCluster {
         TestCluster {
             narwhal_port: self.narwhal_port.clone(),
@@ -271,6 +402,16 @@ impl TestClusterBuilder {
             instance: self.instance,
             chain: self.chain.clone(),
             data_dir: self.data_dir.clone(),
+            pending_max_count: self.pending_max_count,
+            pending_max_size: self.pending_max_size,
+            basefee_max_count: self.basefee_max_count,
+            basefee_max_size: self.basefee_max_size,
+            queued_max_count: self.queued_max_count,
+            queued_max_size: self.queued_max_size,
+            max_account_slots: self.max_account_slots,
+            price_bump: self.price_bump,
+            blob_transaction_price_bump: self.blob_transaction_price_bump,
+            no_locals: self.no_locals,
         }
     }
 }
