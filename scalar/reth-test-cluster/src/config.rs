@@ -21,8 +21,8 @@ pub struct ClusterTestOpt {
     pub txpool_queued_max_count: Option<usize>,
     pub txpool_queued_max_size: Option<usize>,
     pub txpool_max_account_slots: Option<usize>,
-    pub txpool_price_bump: Option<u128>,
-    pub txpool_blob_transaction_price_bump: Option<u128>,
+    txpool_price_bump: Option<u64>,
+    txpool_blob_transaction_price_bump: Option<u64>,
     pub txpool_no_locals: Option<bool>,
 }
 
@@ -116,11 +116,11 @@ impl ClusterTestOpt {
     }
 
     pub fn txpool_price_bump(&self) -> Option<u128> {
-        self.txpool_price_bump
+        self.txpool_price_bump.map(|v| v as u128)
     }
 
     pub fn txpool_blob_transaction_price_bump(&self) -> Option<u128> {
-        self.txpool_blob_transaction_price_bump
+        self.txpool_blob_transaction_price_bump.map(|v| v as u128)
     }
 
     pub fn txpool_no_locals(&self) -> Option<bool> {

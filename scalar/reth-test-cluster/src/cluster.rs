@@ -78,8 +78,8 @@ impl Cluster for LocalNewCluster {
             .queued_max_count(options.txpool_queued_max_count)
             .queued_max_size(options.txpool_queued_max_size)
             .max_account_slots(options.txpool_max_account_slots)
-            .price_bump(options.txpool_price_bump)
-            .blob_transaction_price_bump(options.txpool_blob_transaction_price_bump)
+            .price_bump(options.txpool_price_bump())
+            .blob_transaction_price_bump(options.txpool_blob_transaction_price_bump())
             .no_locals(options.txpool_no_locals);
 
         if options.instance.is_some() {
