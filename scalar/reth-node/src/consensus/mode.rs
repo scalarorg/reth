@@ -4,7 +4,7 @@ use futures_util::{stream::Fuse, StreamExt};
 use reth_primitives::TxHash;
 use reth_transaction_pool::{TransactionPool, ValidPoolTransaction};
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     fmt,
     pin::Pin,
     sync::Arc,
@@ -12,10 +12,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{
-        mpsc::{Receiver, UnboundedReceiver},
-        RwLock,
-    },
+    sync::mpsc::{Receiver, UnboundedReceiver},
     time::Interval,
 };
 use tokio_stream::{
@@ -211,77 +208,111 @@ impl<Pool: TransactionPool> NarwhalTransactionMiner<Pool> {
     where
         Pool: TransactionPool,
     {
+        while let Poll::Ready(Some(comitted_transactions)) =
+            Pin::new(&mut self.rx_commited_transactions).poll_next(cx)
+        {
+            if comitted_transactions.len() > 0 {
+                self.pending_commited_transactions.push_back(comitted_transactions);
+            }
+        }
+
         // drain the notification stream
         while let Poll::Ready(Some(tx_hash)) =
             Pin::new(&mut self.rx_pending_transaction).poll_next(cx)
         {
             //let guard = self.pending_transaction_queue.write().await;
             if let Some(transaction) = pool.get(&tx_hash) {
-                info!("Pending transaction {:?}", transaction.nonce());
+                let nonce = transaction.nonce();
                 self.pending_transaction_queue.push_back(transaction);
+                info!(
+                    "Push pending transaction {:?}. New pending queue size {:?}",
+                    nonce,
+                    self.pending_transaction_queue.len()
+                );
             }
         }
 
-        while let Poll::Ready(Some(comitted_transactions)) =
-            Pin::new(&mut self.rx_commited_transactions).poll_next(cx)
-        {
-            self.pending_commited_transactions.push_back(comitted_transactions);
-        }
-        let mut transactions = vec![];
         // let transactions = pool.best_transactions().collect::<Vec<_>>();
 
         // there are pending transactions if we didn't drain the pool
         // self.has_pending_txs = Some(transactions.len() >= self.max_transactions);
-        if let Some(commited_transactions) = self.pending_commited_transactions.get(0) {
-            for transaction in commited_transactions.iter() {
-                //Find transaction in the pending queue with current hash
-                let mut index = 0;
-                let mut found = false;
-                loop {
-                    if let Some(tran) = self.pending_transaction_queue.get(index) {
-                        if tran.hash().as_slice() == transaction.tx_bytes.as_slice() {
-                            transactions.push(Arc::clone(tran));
-                            info!(
-                                "Found transaction with nonce {:?} and hash {:?}",
-                                tran.nonce(),
-                                &transaction.tx_bytes
-                            );
-                            found = true;
-                            break;
-                        } else {
-                            index += 1;
-                        }
-                    } else {
-                        break;
-                    }
-                }
-                if found {
-                    self.pending_transaction_queue.remove(index);
-                } else {
-                    warn!("Missing transaction with hash {:?}", &transaction.tx_bytes);
-                    return Poll::Pending;
-                }
-            }
-
-            // for tran in commited_transactions.iter() {
-            //     let queue_tran = self.pending_transaction_queue.pop_front().expect("non empty");
-            //     tracing::info!("Next queued transaction nonce {:?}", queue_tran.nonce());
-            //     if tran.tx_bytes.as_slice() != queue_tran.hash().as_slice() {
-            //         tracing::warn!(
-            //             "Transaction {} with commited hash are not match",
-            //             queue_tran.nonce()
-            //         );
-            //     }
-            //     transactions.push(queue_tran);
-            // }
-            self.pending_commited_transactions.pop_front();
-            if transactions.is_empty() {
-                return Poll::Pending;
-            }
-            return Poll::Ready(transactions);
-        } else {
+        if self.pending_commited_transactions.is_empty() {
             return Poll::Pending;
         }
+        let commited_transactions = self.pending_commited_transactions.get(0).expect("not null");
+        let mut transactions = vec![];
+        let hash_set: HashSet<Vec<u8>> =
+            commited_transactions.iter().map(|tran| tran.tx_bytes.clone()).collect();
+        let commited_len = commited_transactions.len();
+        let mut indexes = vec![];
+        let mut index = 0;
+        info!(
+            "Try to form a block with {:?} commited transactions. Pending queue size {:?}",
+            commited_len,
+            self.pending_transaction_queue.len()
+        );
+        while let Some(tran) = self.pending_transaction_queue.get(index) {
+            let key = tran.hash().as_slice().to_vec();
+            if hash_set.contains(&key) {
+                info!(
+                    "Found transaction with nonce {:?} and hash {:?} at index {}",
+                    tran.nonce(),
+                    &key,
+                    index
+                );
+                transactions.push(Arc::clone(tran));
+                indexes.push(index);
+                if transactions.len() == commited_len {
+                    info!("Found all commited transaction in pending cache, form a new block");
+                    //Clean up pending cache
+                    for i in indexes.into_iter().rev() {
+                        self.pending_transaction_queue.remove(i);
+                    }
+                    break;
+                }
+            } else {
+                info!("Pending transaction with nonce {:?} is not commited", tran.nonce());
+            }
+            index += 1;
+        }
+        if transactions.len() < hash_set.len() {
+            warn!("Missing some transactions in pending queue");
+            return Poll::Pending;
+        }
+        // for transaction in commited_transactions.iter() {
+        //     //Find transaction in the pending queue with current hash
+        //     let mut index = 0;
+        //     let mut found = false;
+        //     loop {
+        //         if let Some(tran) = self.pending_transaction_queue.get(index) {
+        //             if tran.hash().as_slice() == transaction.tx_bytes.as_slice() {
+        //                 transactions.push(Arc::clone(tran));
+        //                 info!(
+        //                     "Found transaction with nonce {:?} and hash {:?}",
+        //                     tran.nonce(),
+        //                     &transaction.tx_bytes
+        //                 );
+        //                 found = true;
+        //                 break;
+        //             } else {
+        //                 index += 1;
+        //             }
+        //         } else {
+        //             break;
+        //         }
+        //     }
+        //     if found {
+        //         self.pending_transaction_queue.remove(index);
+        //     } else {
+        //         warn!("Missing transaction with hash {:?}", &transaction.tx_bytes);
+        //         return Poll::Pending;
+        //     }
+        // }
+        self.pending_commited_transactions.pop_front();
+        if transactions.is_empty() {
+            return Poll::Pending;
+        }
+        return Poll::Ready(transactions);
     }
 }
 
