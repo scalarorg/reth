@@ -68,7 +68,19 @@ impl Cluster for LocalNewCluster {
     async fn start(options: &ClusterTestOpt) -> Result<Self, anyhow::Error> {
         let mut cluster_builder = TestClusterBuilder::new();
 
-        cluster_builder.narwhal_port(options.narwhal_port.clone()).chain(options.chain.clone());
+        cluster_builder
+            .narwhal_port(options.narwhal_port.clone())
+            .chain(options.chain.clone())
+            .pending_max_count(options.txpool_pending_max_count)
+            .pending_max_size(options.txpool_pending_max_size)
+            .basefee_max_count(options.txpool_basefee_max_count)
+            .basefee_max_size(options.txpool_basefee_max_size)
+            .queued_max_count(options.txpool_queued_max_count)
+            .queued_max_size(options.txpool_queued_max_size)
+            .max_account_slots(options.txpool_max_account_slots)
+            .price_bump(options.txpool_price_bump)
+            .blob_transaction_price_bump(options.txpool_blob_transaction_price_bump)
+            .no_locals(options.txpool_no_locals);
 
         if options.instance.is_some() {
             cluster_builder.instance(options.instance.unwrap());

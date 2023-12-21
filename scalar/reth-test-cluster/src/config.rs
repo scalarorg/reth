@@ -14,6 +14,16 @@ pub struct ClusterTestOpt {
     pub instance: Option<u8>,
     pub wait_time_ms: Option<u64>,
     pub keep_alive: Option<bool>,
+    pub txpool_pending_max_count: Option<usize>,
+    pub txpool_pending_max_size: Option<usize>,
+    pub txpool_basefee_max_count: Option<usize>,
+    pub txpool_basefee_max_size: Option<usize>,
+    pub txpool_queued_max_count: Option<usize>,
+    pub txpool_queued_max_size: Option<usize>,
+    pub txpool_max_account_slots: Option<usize>,
+    pub txpool_price_bump: Option<u128>,
+    pub txpool_blob_transaction_price_bump: Option<u128>,
+    pub txpool_no_locals: Option<bool>,
 }
 
 impl ClusterTestOpt {
@@ -75,5 +85,45 @@ impl ClusterTestOpt {
         }
 
         self.keep_alive.unwrap()
+    }
+
+    pub fn txpool_pending_max_count(&self) -> Option<usize> {
+        self.txpool_pending_max_count
+    }
+
+    pub fn txpool_pending_max_size(&self) -> Option<usize> {
+        self.txpool_pending_max_size
+    }
+
+    pub fn txpool_basefee_max_count(&self) -> Option<usize> {
+        self.txpool_basefee_max_count
+    }
+
+    pub fn txpool_basefee_max_size(&self) -> Option<usize> {
+        self.txpool_basefee_max_size
+    }
+
+    pub fn txpool_queued_max_count(&self) -> Option<usize> {
+        self.txpool_queued_max_count
+    }
+
+    pub fn txpool_queued_max_size(&self) -> Option<usize> {
+        self.txpool_queued_max_size
+    }
+
+    pub fn txpool_max_account_slots(&self) -> Option<usize> {
+        self.txpool_max_account_slots
+    }
+
+    pub fn txpool_price_bump(&self) -> Option<u128> {
+        self.txpool_price_bump
+    }
+
+    pub fn txpool_blob_transaction_price_bump(&self) -> Option<u128> {
+        self.txpool_blob_transaction_price_bump
+    }
+
+    pub fn txpool_no_locals(&self) -> Option<bool> {
+        self.txpool_no_locals
     }
 }
