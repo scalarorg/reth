@@ -29,6 +29,10 @@ pub trait Cluster {
     async fn shutdown(&mut self) -> Result<(), anyhow::Error> {
         Ok(())
     }
+
+    fn get_cluster_handle(&mut self) -> Result<tokio::task::JoinHandle<()>, anyhow::Error> {
+        Ok(tokio::task::spawn(async move {}))
+    }
 }
 
 /// Represents an up and running cluster deployed remotely.
@@ -55,7 +59,7 @@ impl Cluster for RemoteRunningCluster {
 pub struct LocalNewCluster {
     test_cluster: TestCluster,
     fullnode_url: String,
-    handle: tokio::task::JoinHandle<()>,
+    handle: Option<tokio::task::JoinHandle<()>>,
     tx_shutdown: tokio::sync::watch::Sender<()>,
 }
 
@@ -64,7 +68,19 @@ impl Cluster for LocalNewCluster {
     async fn start(options: &ClusterTestOpt) -> Result<Self, anyhow::Error> {
         let mut cluster_builder = TestClusterBuilder::new();
 
-        cluster_builder.narwhal_port(options.narwhal_port.clone()).chain(options.chain.clone());
+        cluster_builder
+            .narwhal_port(options.narwhal_port.clone())
+            .chain(options.chain.clone())
+            .pending_max_count(options.txpool_pending_max_count)
+            .pending_max_size(options.txpool_pending_max_size)
+            .basefee_max_count(options.txpool_basefee_max_count)
+            .basefee_max_size(options.txpool_basefee_max_size)
+            .queued_max_count(options.txpool_queued_max_count)
+            .queued_max_size(options.txpool_queued_max_size)
+            .max_account_slots(options.txpool_max_account_slots)
+            .price_bump(options.txpool_price_bump)
+            .blob_transaction_price_bump(options.txpool_blob_transaction_price_bump)
+            .no_locals(options.txpool_no_locals);
 
         if options.instance.is_some() {
             cluster_builder.instance(options.instance.unwrap());
@@ -86,7 +102,7 @@ impl Cluster for LocalNewCluster {
 
         let fullnode_url = test_cluster.fullnode_url().to_string();
 
-        Ok(Self { fullnode_url, test_cluster, handle, tx_shutdown })
+        Ok(Self { fullnode_url, test_cluster, handle: Some(handle), tx_shutdown })
     }
 
     fn fullnode_url(&self) -> &str {
@@ -96,9 +112,19 @@ impl Cluster for LocalNewCluster {
     async fn shutdown(&mut self) -> Result<(), anyhow::Error> {
         self.tx_shutdown.send(()).expect("Should send shutdown signal to cluster");
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        self.handle.abort();
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
 
         Ok(())
+    }
+
+    fn get_cluster_handle(&mut self) -> Result<tokio::task::JoinHandle<()>, anyhow::Error> {
+        if let Some(handle) = self.handle.take() {
+            return Ok(handle);
+        }
+
+        Err(anyhow::anyhow!("Cluster handle not found"))
     }
 }
 

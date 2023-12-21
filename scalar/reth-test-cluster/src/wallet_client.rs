@@ -14,12 +14,8 @@ pub struct WalletClient {
 }
 
 impl WalletClient {
-    pub async fn new_from_cluster(
-        cluster: &(dyn Cluster + Sync + Send),
-        options: &ClusterTestOpt,
-    ) -> Self {
-        let provider =
-            Provider::<Http>::try_from(cluster.fullnode_url()).expect("Should create provider");
+    pub async fn new_from_cluster_url(cluster_url: &str, options: &ClusterTestOpt) -> Self {
+        let provider = Provider::<Http>::try_from(cluster_url).expect("Should create provider");
         let chain_id = provider.get_chainid().await.expect("Should get chain id").as_u64();
         let phrase: &str = options.phrase();
         // Use instance for index or 0 for first account
