@@ -20,6 +20,9 @@ reth-ethereum-consensus.workspace = true
 # Ethereum
 revm-primitives.workspace = true
 
+# tracing
+tracing = "0.1.0"
+
 [dev-dependencies]
 reth-revm = { workspace = true, features = ["test-utils"] }
 alloy-eips.workspace = true

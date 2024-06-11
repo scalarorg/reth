@@ -142,6 +142,8 @@ where
             )),
         )?;
 
+        // info!("Node config: {:?}", ctx.node_config().clone()); 
+
         let builder_ctx = BuilderContext::new(
             head,
             blockchain_db.clone(),

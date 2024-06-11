@@ -134,6 +134,7 @@ where
     where
         DB: Database<Error = ProviderError>,
     {
+        let start = std::time::Instant::now();
         // apply pre execution changes
         apply_beacon_root_contract_call(
             &self.chain_spec,
@@ -189,6 +190,8 @@ where
             );
         }
         drop(evm);
+
+        tracing::info!(target: "reth::revm", block_number=?block.block.header.number, time=?start.elapsed(), "Evm executes block");
 
         Ok(EthExecuteOutput { receipts, requests: vec![], gas_used: cumulative_gas_used })
     }

@@ -371,6 +371,9 @@ impl StorageInner {
         Executor: BlockExecutorProvider,
         Provider: StateProviderFactory,
     {
+        use tokio::time::Instant;
+        let start = Instant::now();
+
         let header = self.build_header_template(
             &transactions,
             &ommers,
@@ -378,6 +381,8 @@ impl StorageInner {
             requests.as_ref(),
             chain_spec,
         );
+
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_header_template executed");
 
         let block = Block {
             header,
@@ -395,6 +400,8 @@ impl StorageInner {
             provider.latest().map_err(BlockExecutionError::LatestBlock)?,
         );
 
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute StateProviderDatabase created");
+
         // execute the block
         let BlockExecutionOutput { state, receipts, .. } =
             executor.executor(&mut db).execute((&block, U256::ZERO).into())?;
@@ -403,6 +410,8 @@ impl StorageInner {
             Receipts::from_block_receipt(receipts),
             block.number,
         );
+
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute executed block");
 
         // todo(onbjerg): we should not pass requests around as this is building a block, which
         // means we need to extract the requests from the execution output and compute the requests
@@ -417,11 +426,17 @@ impl StorageInner {
         header.state_root = db.state_root(bundle_state.state())?;
         trace!(target: "consensus::auto", root=?header.state_root, ?body, "calculated root");
 
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute calculated root");
+
         // finally insert into storage
         self.insert_new_block(header.clone(), body);
 
+        // tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute inserted into storage");
+
         // set new header with hash that should have been updated by insert_new_block
         let new_header = header.seal(self.best_hash);
+
+        // tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute sealed new header");
 
         Ok((new_header, bundle_state))
     }

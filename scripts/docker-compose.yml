@@ -1,0 +1,7 @@
+version: '3.8'
+
+services:
+  my_service:
+    image: reth_node:latest
+    # volumes:
+      # - ./scripts/chain.json:app/scripts/chain.json

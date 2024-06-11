@@ -101,6 +101,7 @@ where
         // this drives block production and
         loop {
             if let Poll::Ready(transactions) = this.miner.poll(&this.pool, cx) {
+                tracing::info!("Found new set of transactions to mine: {}", transactions.len());
                 // miner returned a set of transaction that we feed to the producer
                 this.queued.push_back(transactions);
             }
@@ -126,6 +127,10 @@ where
                 // Create the mining future that creates a block, notifies the engine that drives
                 // the pipeline
                 this.insert_task = Some(Box::pin(async move {
+                    // start time estimate
+                    let start = tokio::time::Instant::now();
+                    tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Start mining");
+
                     let mut storage = storage.write().await;
 
                     let (transactions, senders): (Vec<_>, Vec<_>) = transactions
@@ -136,6 +141,9 @@ where
                             (recovered.into_signed(), signer)
                         })
                         .unzip();
+                
+                    tracing::info!(target: "consensus::auto", time=?start.elapsed(), num_txs=?transactions.len(), "Load transactions");
+
                     let ommers = vec![];
                     // todo(onbjerg): these two dont respect chainspec
                     let withdrawals = Some(Withdrawals::default());
@@ -151,10 +159,16 @@ where
                         &executor,
                     ) {
                         Ok((new_header, bundle_state)) => {
+                            tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Built and executed block");
+                            tracing::info!(target: "consensus::auto", num_txs=?transactions.len(), "Transactions in block");
+
                             // clear all transactions from pool
                             pool.remove_transactions(
                                 transactions.iter().map(|tx| tx.hash()).collect(),
                             );
+
+                            // remove time
+                            tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Removed transactions from pool");
 
                             let state = ForkchoiceState {
                                 head_block_hash: new_header.hash(),
@@ -175,6 +189,7 @@ where
                                     tx,
                                 });
                                 debug!(target: "consensus::auto", ?state, "Sent fork choice update");
+                                tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Sent fork choice update");
 
                                 match rx.await.unwrap() {
                                     Ok(fcu_response) => {
@@ -186,6 +201,7 @@ where
                                             }
                                             ForkchoiceStatus::Syncing => {
                                                 debug!(target: "consensus::auto", ?fcu_response, "Forkchoice update returned SYNCING, waiting for VALID");
+                                                // tracing::info!(target: "consensus::auto", ?fcu_response, time=?start.elapsed(), "Forkchoice update returned SYNCING, waiting for VALID");
                                                 // wait for the next fork choice update
                                                 continue
                                             }
@@ -198,6 +214,8 @@ where
                                 }
                             }
 
+                            tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Fork choice updated");
+
                             // seal the block
                             let block = Block {
                                 header: new_header.clone().unseal(),
@@ -206,6 +224,7 @@ where
                                 withdrawals,
                                 requests,
                             };
+                            tracing::info!(target: "consensus::auto", block_number=?block.header.number, "Sealing block");
                             let sealed_block = block.seal_slow();
 
                             let sealed_block_with_senders =
@@ -225,15 +244,18 @@ where
                                 None,
                             ));
 
+                            tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Initialized block for senders");
+
                             // send block notification
                             let _ = canon_state_notification
                                 .send(reth_provider::CanonStateNotification::Commit { new: chain });
+
+                            tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Commited block");
                         }
                         Err(err) => {
                             warn!(target: "consensus::auto", %err, "failed to execute block")
                         }
                     }
-
                     events
                 }));
             }

@@ -11,6 +11,9 @@
 !Cross.toml
 !deny.toml
 !Makefile
+!/scripts # Huy Le: Adding scripts
+!/eth_tests # Huy Le: Adding ethereum testing
+/scripts/tmp
 
 # include for vergen constants
 !/.git
