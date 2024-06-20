@@ -88,6 +88,7 @@ where
         self,
         retain_updates: bool,
     ) -> Result<(B256, TrieUpdates), AsyncStateRootError> {
+        tracing::info!(target: "trie::async_state_root", "Huy: async state root start");
         let mut tracker = ParallelTrieTracker::default();
         let prefix_sets = self.hashed_state.construct_prefix_sets();
         let storage_root_targets = StorageRootTargets::new(

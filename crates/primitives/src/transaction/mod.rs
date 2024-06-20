@@ -1020,6 +1020,7 @@ impl TransactionSigned {
         if let Transaction::Deposit(TxDeposit { from, .. }) = self.transaction {
             return Some(from)
         }
+
         let signature_hash = self.signature_hash();
         self.signature.recover_signer(signature_hash)
     }

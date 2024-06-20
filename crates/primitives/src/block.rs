@@ -98,7 +98,7 @@ impl Block {
     /// and the signer recovery for one of the transactions fails.
     ///
     /// Note: this is expected to be called with blocks read from disk.
-    #[track_caller]
+    // #[track_caller]
     pub fn with_senders_unchecked(self, senders: Vec<Address>) -> BlockWithSenders {
         self.try_with_senders_unchecked(senders).expect("stored block is valid")
     }

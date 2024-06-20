@@ -134,7 +134,6 @@ where
     where
         DB: Database<Error = ProviderError>,
     {
-        let start = std::time::Instant::now();
         // apply pre execution changes
         apply_beacon_root_contract_call(
             &self.chain_spec,
@@ -190,8 +189,6 @@ where
             );
         }
         drop(evm);
-
-        tracing::info!(target: "reth::revm", block_number=?block.block.header.number, time=?start.elapsed(), "Evm executes block");
 
         Ok(EthExecuteOutput { receipts, requests: vec![], gas_used: cumulative_gas_used })
     }
@@ -343,12 +340,17 @@ where
     ///
     /// State changes are committed to the database.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
+        tracing::info!(target: "consensus::auto", "Huy: execute block");
+        let start = std::time::Instant::now();
         let BlockExecutionInput { block, total_difficulty } = input;
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "load input");
         let EthExecuteOutput { receipts, requests, gas_used } =
             self.execute_without_verification(block, total_difficulty)?;
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Huy: execute_without_verification");
 
         // NOTE: we need to merge keep the reverts for the bundle retention
         self.state.merge_transitions(BundleRetention::Reverts);
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Huy: merge_transitions");
 
         Ok(BlockExecutionOutput { state: self.state.take_bundle(), receipts, requests, gas_used })
     }

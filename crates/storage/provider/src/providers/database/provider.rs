@@ -2535,6 +2535,7 @@ impl<TX: DbTxMut + DbTx> BlockWriter for DatabaseProvider<TX> {
         block: SealedBlockWithSenders,
         prune_modes: Option<&PruneModes>,
     ) -> ProviderResult<StoredBlockBodyIndices> {
+        tracing::info!(target: "sync::init", number = block.number, "Huy: Inserting block provider");
         let block_number = block.number;
 
         let mut durations_recorder = metrics::DurationsRecorder::default();

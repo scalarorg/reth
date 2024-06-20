@@ -79,6 +79,8 @@ where
         self,
         retain_updates: bool,
     ) -> Result<(B256, TrieUpdates), ParallelStateRootError> {
+        tracing::info!(target: "trie::parallel_state_root", "Huy: parallel state root started");
+
         let mut tracker = ParallelTrieTracker::default();
         let prefix_sets = self.hashed_state.construct_prefix_sets();
         let storage_root_targets = StorageRootTargets::new(
@@ -185,7 +187,7 @@ where
             precomputed_storage_roots = stats.precomputed_storage_roots(),
             "calculated state root"
         );
-
+        
         Ok((root, trie_updates))
     }
 }

@@ -49,6 +49,8 @@ pub use mode::{FixedBlockTimeMiner, MiningMode, ReadyTransactionMiner};
 use reth_evm::execute::{BlockExecutionOutput, BlockExecutorProvider, Executor};
 pub use task::MiningTask;
 
+use reth_primitives::Address;
+
 /// A consensus implementation intended for local development and testing purposes.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -360,6 +362,7 @@ impl StorageInner {
     pub(crate) fn build_and_execute<Provider, Executor>(
         &mut self,
         transactions: Vec<TransactionSigned>,
+        senders: Vec<Address>, // Huy Le: this field adding for tes
         ommers: Vec<Header>,
         withdrawals: Option<Withdrawals>,
         requests: Option<Requests>,
@@ -382,7 +385,7 @@ impl StorageInner {
             chain_spec,
         );
 
-        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_header_template executed");
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Huy: build_and_execute build_header_template executed");
 
         let block = Block {
             header,
@@ -394,13 +397,29 @@ impl StorageInner {
         .with_recovered_senders()
         .ok_or(BlockExecutionError::Validation(BlockValidationError::SenderRecoveryError))?;
 
+        /*
+            Huy Le
+            try with unchecked senders    
+            org: function fields didn't have senders filed, remove this filed if not needed when with_recovered_senders()
+         */
+        // let block = Block {
+        //     header,
+        //     body: transactions,
+        //     ommers: ommers.clone(),
+        //     withdrawals: withdrawals.clone(),
+        //     requests: requests.clone(),
+        // }
+        // .try_with_senders_unchecked(senders).unwrap();
+
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Huy: build_and_execute Block created");
+
         trace!(target: "consensus::auto", transactions=?&block.body, "executing transactions");
 
         let mut db = StateProviderDatabase::new(
             provider.latest().map_err(BlockExecutionError::LatestBlock)?,
         );
 
-        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute StateProviderDatabase created");
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Huy: build_and_execute StateProviderDatabase created");
 
         // execute the block
         let BlockExecutionOutput { state, receipts, .. } =
@@ -411,7 +430,7 @@ impl StorageInner {
             block.number,
         );
 
-        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute executed block");
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Huy: build_and_execute executed block");
 
         // todo(onbjerg): we should not pass requests around as this is building a block, which
         // means we need to extract the requests from the execution output and compute the requests
@@ -426,17 +445,15 @@ impl StorageInner {
         header.state_root = db.state_root(bundle_state.state())?;
         trace!(target: "consensus::auto", root=?header.state_root, ?body, "calculated root");
 
-        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute calculated root");
+        tracing::info!(target: "consensus::auto", time=?start.elapsed(), "Huy: build_and_execute calculated root");
 
         // finally insert into storage
         self.insert_new_block(header.clone(), body);
 
-        // tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute inserted into storage");
+        tracing::debug!(target: "consensus::auto", time=?start.elapsed(), "Huy: build_and_execute inserted into storage");
 
         // set new header with hash that should have been updated by insert_new_block
         let new_header = header.seal(self.best_hash);
-
-        // tracing::info!(target: "consensus::auto", time=?start.elapsed(), "build_and_execute sealed new header");
 
         Ok((new_header, bundle_state))
     }

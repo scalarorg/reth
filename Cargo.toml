@@ -104,7 +104,6 @@ members = [
     "examples/txpool-tracing/",
     "testing/ef-tests/",
     "testing/testing-utils",
-    "eth_tests/",
 ]
 default-members = ["bin/reth"]
 

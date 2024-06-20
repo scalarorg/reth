@@ -779,6 +779,7 @@ where
         block: SealedBlockWithSenders,
         block_validation_kind: BlockValidationKind,
     ) -> Result<InsertPayloadOk, InsertBlockError> {
+        tracing::info!(target="blockchain_tree", "Huy: Inserting block blockchain tree");
         // check if we already have this block
         match self.is_block_known(block.num_hash()) {
             Ok(Some(status)) => return Ok(InsertPayloadOk::AlreadySeen(status)),

@@ -51,6 +51,7 @@ where
         block: SealedBlockWithSenders,
         validation_kind: BlockValidationKind,
     ) -> Result<InsertPayloadOk, InsertBlockError> {
+        tracing::info!(target: "blockchain_tree", "Huy: Inserting block shareable");
         trace!(target: "blockchain_tree", hash = %block.hash(), number = block.number, parent_hash = %block.parent_hash, "Inserting block");
         let mut tree = self.tree.write();
         let res = tree.insert_block(block, validation_kind);

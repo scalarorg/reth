@@ -193,6 +193,7 @@ where
     ///
     /// The state root hash.
     pub fn root(self) -> Result<B256, StateRootError> {
+        tracing::debug!(target="trie::state_root", "Huy: root");
         match self.calculate(false)? {
             StateRootProgress::Complete(root, _, _) => Ok(root),
             StateRootProgress::Progress(..) => unreachable!(), // update retenion is disabled
@@ -210,6 +211,10 @@ where
     }
 
     fn calculate(self, retain_updates: bool) -> Result<StateRootProgress, StateRootError> {
+        // tracing info run time for state root
+        tracing::info!(target: "trie::state_root", "Huy: state root started");
+        let start = std::time::Instant::now();
+
         trace!(target: "trie::state_root", "calculating state root");
         let mut tracker = TrieTracker::default();
         let mut trie_updates = TrieUpdates::default();
@@ -337,6 +342,7 @@ where
             "calculated state root"
         );
 
+        tracing::info!(target: "trie::state_root", time=?start.elapsed(),"Huy: state root completed");
         Ok(StateRootProgress::Complete(root, hashed_entries_walked, trie_updates))
     }
 }
