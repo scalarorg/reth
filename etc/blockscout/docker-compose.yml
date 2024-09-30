@@ -1,0 +1,137 @@
+networks:
+  localnet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${BLOCKSCOUT_SUBNET}.0/24
+services:
+  redis-db:
+    extends:
+      file: ./services/redis.yml
+      service: redis-db
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.111"  
+
+  db-init:
+    extends:
+      file: ./services/db.yml
+      service: db-init
+
+  db:
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    extends:
+      file: ./services/db.yml
+      service: db
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.112"   
+
+  backend:
+    depends_on:
+      - db
+      - redis-db
+    extends:
+      file: ./services/backend.yml
+      service: backend
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile
+      args:
+        CACHE_EXCHANGE_RATES_PERIOD: ""
+        API_V1_READ_METHODS_DISABLED: "false"
+        DISABLE_WEBAPP: "false"
+        API_V1_WRITE_METHODS_DISABLED: "false"
+        CACHE_TOTAL_GAS_USAGE_COUNTER_ENABLED: ""
+        CACHE_ADDRESS_WITH_BALANCES_UPDATE_INTERVAL: ""
+        ADMIN_PANEL_ENABLED: ""
+        RELEASE_VERSION: 6.8.1
+    links:
+      - db:database
+    environment:
+        ETHEREUM_JSONRPC_HTTP_URL: http://host.docker.internal:32002/
+        ETHEREUM_JSONRPC_TRACE_URL: http://host.docker.internal:32002/
+        ETHEREUM_JSONRPC_WS_URL: ws://host.docker.internal:32003/
+        CHAIN_ID: '1337'
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.113"    
+
+  visualizer:
+    extends:
+      file: ./services/visualizer.yml
+      service: visualizer
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.114"   
+
+  sig-provider:
+    extends:
+      file: ./services/sig-provider.yml
+      service: sig-provider
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.115"   
+
+  frontend:
+    depends_on:
+      - backend
+    extends:
+      file: ./services/frontend.yml
+      service: frontend
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.116"   
+
+  stats-db-init:
+    extends:
+      file: ./services/stats.yml
+      service: stats-db-init
+
+  stats-db:
+    depends_on:
+      stats-db-init:
+        condition: service_completed_successfully
+    extends:
+      file: ./services/stats.yml
+      service: stats-db
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.117"   
+
+  stats:
+    depends_on:
+      - stats-db
+      - backend
+    extends:
+      file: ./services/stats.yml
+      service: stats
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.118"   
+
+  user-ops-indexer:
+    depends_on:
+      - db
+      - backend
+    extends:
+      file: ./services/user-ops-indexer.yml
+      service: user-ops-indexer
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.119"   
+
+  proxy:
+    depends_on:
+      - backend
+      - frontend
+      - stats
+    extends:
+      file: ./services/nginx.yml
+      service: proxy  
+    networks:
+      localnet:
+        ipv4_address: "${BLOCKSCOUT_SUBNET}.110"     

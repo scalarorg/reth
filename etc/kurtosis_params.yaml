@@ -1,0 +1,33 @@
+#https://github.com/ethpandaops/ethereum-package/blob/main/README.md
+participants:
+  - el_type: reth
+    el_image: scalaris/reth
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:latest
+  - el_type: reth
+    el_image: scalaris/reth
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:latest
+port_publisher:
+  el:
+    enabled: true
+    public_port_start: 32000
+# additional_services:
+#  - assertoor
+#  - broadcaster
+#  - tx_spammer
+#  - blob_spammer
+#  - custom_flood
+#  - goomy_blob
+#  - el_forkmon
+# - blockscout
+#  - beacon_metrics_gazer
+#  - dora
+#  - full_beaconchain_explorer
+# - prometheus_grafana
+#  - blobscan
+# - dugtrio
+# - blutgang
+# - forky
+# - apache
+# - tracoor
