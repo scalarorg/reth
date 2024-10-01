@@ -12,10 +12,10 @@ port_publisher:
   el:
     enabled: true
     public_port_start: 32000
-# additional_services:
-#  - assertoor
-#  - broadcaster
-#  - tx_spammer
+additional_services:
+  #  - assertoor
+  #  - broadcaster
+  - tx_spammer
 #  - blob_spammer
 #  - custom_flood
 #  - goomy_blob

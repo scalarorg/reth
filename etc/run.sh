@@ -19,7 +19,7 @@ start() {
     # prepare_network
     case $SERVICE in
         blockscout)
-            $DIR/config/blockscout/run.sh start
+            $DIR/blockscout/run.sh start
             ;;
         network)
             kurtosis run github.com/ethpandaops/ethereum-package --args-file $DIR/kurtosis_params.yaml --image-download always  
@@ -28,7 +28,7 @@ start() {
             ;;  
         all)
             kurtosis run github.com/ethpandaops/ethereum-package --args-file $DIR/kurtosis_params.yaml --image-download always  
-            $DIR/config/blockscout/run.sh start
+            $DIR/blockscout/run.sh start
             ;;    
         *)
             echo "Unknown service $SERVICE. Do nothing."
@@ -40,15 +40,15 @@ start() {
 stop() {
     case $SERVICE in
         blockscout)
-            $DIR/config/blockscout/run.sh stop
+            $DIR/blockscout/run.sh stop
             ;;
         network)
             kurtosis clean -a
             # $DIR/generate-jwt.sh
             # docker compose --env-file $DIR/.env.${ENV} -f ${DIR}/reth.yml -f ${DIR}/lighthouse.yml up -d
             ;;  
-        stop)
-            $DIR/config/blockscout/run.sh stop
+        all)
+            $DIR/blockscout/run.sh stop
             kurtosis clean -a
             ;;    
         *)
