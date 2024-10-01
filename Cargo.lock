@@ -61,6 +61,7 @@ dependencies = [
  "cfg-if",
  "getrandom 0.2.15",
  "once_cell",
+ "serde",
  "version_check",
  "zerocopy",
 ]
@@ -9513,6 +9514,61 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "scalar-pevm"
+version = "1.0.7"
+dependencies = [
+ "ahash",
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-genesis",
+ "alloy-primitives",
+ "alloy-provider",
+ "alloy-rpc-types",
+ "alloy-sol-types",
+ "alloy-transport",
+ "alloy-transport-http",
+ "bitflags 2.6.0",
+ "bitvec",
+ "dashmap 6.1.0",
+ "reqwest",
+ "reth-chainspec",
+ "reth-ethereum-consensus",
+ "reth-ethereum-forks",
+ "reth-evm",
+ "reth-execution-types",
+ "reth-primitives",
+ "reth-prune-types",
+ "reth-revm",
+ "reth-testing-utils",
+ "revm",
+ "revm-primitives",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tokio",
+]
+
+[[package]]
+name = "scalar-seth"
+version = "0.0.0"
+dependencies = [
+ "alloy-genesis",
+ "alloy-primitives",
+ "eyre",
+ "reth",
+ "reth-chainspec",
+ "reth-evm-ethereum",
+ "reth-node-api",
+ "reth-node-core",
+ "reth-node-ethereum",
+ "reth-primitives",
+ "reth-tracing",
+ "scalar-pevm",
+ "tokio",
 ]
 
 [[package]]

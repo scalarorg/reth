@@ -1,0 +1,12 @@
+services:
+  rust:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    # image: rust:1.81-bookworm
+    image: scalaris/builder 
+    container_name: scalar-rust
+    volumes:
+      - ../../:/app
+    working_dir: /app
+    entrypoint: sleep infinity
