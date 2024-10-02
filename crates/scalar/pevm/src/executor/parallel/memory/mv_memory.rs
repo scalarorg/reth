@@ -7,14 +7,11 @@ use alloy_primitives::{Address, B256};
 use dashmap::DashMap;
 use revm::primitives::Bytecode;
 
-use crate::{
-    index_mutex,
-    types::{
-        BuildIdentityHasher, BuildSuffixHasher, MemoryEntry, MemoryLocationHash, ReadOrigin,
-        ReadSet, TxIdx, TxVersion, WriteSet,
-    },
+use crate::executor::parallel::types::{
+    BuildIdentityHasher, BuildSuffixHasher, MemoryEntry, MemoryLocationHash, ReadOrigin, ReadSet,
+    TxIdx, TxVersion, WriteSet,
 };
-
+use crate::index_mutex;
 #[derive(Default, Debug)]
 struct LastLocations {
     read: ReadSet,
@@ -29,7 +26,7 @@ type LazyAddresses = HashSet<Address, BuildSuffixHasher>;
 /// multiple writes for each memory location, along with a value and an associated
 /// version of a corresponding transaction.
 #[derive(Debug)]
-pub struct MvMemory {
+pub(crate) struct MvMemory {
     /// The list of transaction incarnations and written values for each memory location
     // No more hashing is required as we already identify memory locations by their hash
     // in the read & write sets. [dashmap] having a dedicated interface for this use case

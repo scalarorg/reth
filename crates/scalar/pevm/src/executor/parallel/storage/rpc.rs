@@ -27,7 +27,7 @@ type RpcProvider<N> = RootProvider<Http<Client>, N>;
 
 /// A storage that fetches state data via RPC for execution.
 #[derive(Debug)]
-pub struct RpcStorage<N> {
+pub(crate) struct RpcStorage<N> {
     provider: RpcProvider<N>,
     block_id: BlockId,
     precompiles: &'static Precompiles,
@@ -46,7 +46,7 @@ pub struct RpcStorage<N> {
 
 impl<N> RpcStorage<N> {
     /// Create a new RPC Storage
-    pub fn new(provider: RpcProvider<N>, spec_id: SpecId, block_id: BlockId) -> Self {
+    pub(crate) fn new(provider: RpcProvider<N>, spec_id: SpecId, block_id: BlockId) -> Self {
         RpcStorage {
             provider,
             precompiles: Precompiles::new(PrecompileSpecId::from_spec_id(spec_id)),
@@ -87,17 +87,17 @@ impl<N> RpcStorage<N> {
     }
 
     /// Get a snapshot of accounts
-    pub fn get_cache_accounts(&self) -> ChainState {
+    pub(crate) fn get_cache_accounts(&self) -> ChainState {
         self.cache_accounts.lock().unwrap().clone()
     }
 
     /// Get a snapshot of bytecodes
-    pub fn get_cache_bytecodes(&self) -> Bytecodes {
+    pub(crate) fn get_cache_bytecodes(&self) -> Bytecodes {
         self.cache_bytecodes.lock().unwrap().clone()
     }
 
     /// Get a snapshot of block hashes
-    pub fn get_cache_block_hashes(&self) -> BlockHashes {
+    pub(crate) fn get_cache_block_hashes(&self) -> BlockHashes {
         self.cache_block_hashes.lock().unwrap().clone()
     }
 }

@@ -9,13 +9,13 @@ use revm::{
 use super::types::{AccountBasic, BuildIdentityHasher, BuildSuffixHasher, EvmAccount, EvmCode};
 
 /// Mapping from address to [EvmAccount]
-pub type ChainState = HashMap<Address, EvmAccount, BuildSuffixHasher>;
+pub(crate) type ChainState = HashMap<Address, EvmAccount, BuildSuffixHasher>;
 
 /// Mapping from code hashes to [EvmCode]s
-pub type Bytecodes = HashMap<B256, EvmCode, BuildSuffixHasher>;
+pub(crate) type Bytecodes = HashMap<B256, EvmCode, BuildSuffixHasher>;
 
 /// Mapping from block numbers to block hashes
-pub type BlockHashes = HashMap<u64, B256, BuildIdentityHasher>;
+pub(crate) type BlockHashes = HashMap<u64, B256, BuildIdentityHasher>;
 
 /// An interface to provide chain state to Pevm for transaction execution.
 /// Staying close to the underlying REVM's Database trait while not leaking
@@ -89,6 +89,6 @@ impl<'a, S: Storage> DatabaseRef for StorageWrapper<'a, S> {
 }
 
 mod in_memory;
-pub use in_memory::InMemoryStorage;
+pub(crate) use in_memory::InMemoryStorage;
 mod rpc;
-pub use rpc::RpcStorage;
+pub(crate) use rpc::RpcStorage;

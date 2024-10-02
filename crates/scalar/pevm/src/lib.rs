@@ -22,14 +22,7 @@ pub mod dao_fork;
 pub mod eip6110;
 /// Executor module for handling EVM execution.
 pub mod executor;
-/// Memory module for handling EVM multiversion memory.
-pub mod memory;
-/// Scheduler module for handling EVM transaction scheduling.
-pub mod scheduler;
-/// Storage module for handling EVM storage.
-pub mod storage;
-/// Types module for declaration EVM types.
-pub mod types;
+
 pub use config::EthEvmConfig;
 // This optimization is desired as we constantly index into many
 // vectors of the block-size size. It can yield up to 5% improvement.

@@ -11,6 +11,47 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::{collections::HashMap, sync::Arc};
+
+/// We use the last 8 bytes of an existing hash like address
+/// or code hash instead of rehashing it.
+// TODO: Make sure this is acceptable for production
+#[derive(Debug, Default)]
+pub struct SuffixHasher(u64);
+impl Hasher for SuffixHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        let mut suffix = [0u8; 8];
+        suffix.copy_from_slice(&bytes[bytes.len() - 8..]);
+        self.0 = u64::from_be_bytes(suffix);
+    }
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+/// Build a suffix hasher
+pub type BuildSuffixHasher = BuildHasherDefault<SuffixHasher>;
+
+/// This is primarily used for memory location hash, but can also be used for
+/// transaction indexes, etc.
+#[derive(Debug, Default)]
+pub struct IdentityHasher(u64);
+impl Hasher for IdentityHasher {
+    fn write_u64(&mut self, id: u64) {
+        self.0 = id;
+    }
+    fn write_usize(&mut self, id: usize) {
+        self.0 = id as u64;
+    }
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, _: &[u8]) {
+        unreachable!()
+    }
+}
+
+/// Build an identity hasher
+pub type BuildIdentityHasher = BuildHasherDefault<IdentityHasher>;
+
 /// Basic information of an account
 // TODO: Reuse something sane from Alloy?
 #[derive(Debug, Clone, PartialEq)]
@@ -99,48 +140,16 @@ impl From<Bytecode> for EvmCode {
     }
 }
 
-/// We use the last 8 bytes of an existing hash like address
-/// or code hash instead of rehashing it.
-// TODO: Make sure this is acceptable for production
-#[derive(Debug, Default)]
-pub struct SuffixHasher(u64);
-impl Hasher for SuffixHasher {
-    fn write(&mut self, bytes: &[u8]) {
-        let mut suffix = [0u8; 8];
-        suffix.copy_from_slice(&bytes[bytes.len() - 8..]);
-        self.0 = u64::from_be_bytes(suffix);
-    }
-    fn finish(&self) -> u64 {
-        self.0
-    }
-}
-/// Build a suffix hasher
-pub type BuildSuffixHasher = BuildHasherDefault<SuffixHasher>;
+// The index of the transaction in the block.
+// TODO: Consider downsizing to [u32].
+pub(crate) type TxIdx = usize;
 
-/// This is primarily used for memory location hash, but can also be used for
-/// transaction indexes, etc.
-#[derive(Debug, Default)]
-pub struct IdentityHasher(u64);
-impl Hasher for IdentityHasher {
-    fn write_u64(&mut self, id: u64) {
-        self.0 = id;
-    }
-    fn write_usize(&mut self, id: usize) {
-        self.0 = id as u64;
-    }
-    fn finish(&self) -> u64 {
-        self.0
-    }
-    fn write(&mut self, _: &[u8]) {
-        unreachable!()
-    }
-}
-
-/// Build an identity hasher
-pub type BuildIdentityHasher = BuildHasherDefault<IdentityHasher>;
+// The i-th time a transaction is re-executed, counting from 0.
+// TODO: Consider downsizing to [u32].
+pub(crate) type TxIncarnation = usize;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum MemoryLocation {
+pub(crate) enum MemoryLocation {
     // TODO: Separate an account's balance and nonce?
     Basic(Address),
     CodeHash(Address),
@@ -157,7 +166,7 @@ pub(crate) type MemoryLocationHash = u64;
 // memory locations & values at the type level, to prevent lots of
 // matches & potentially dangerous mismatch mistakes.
 #[derive(Debug, Clone)]
-pub enum MemoryValue {
+pub(crate) enum MemoryValue {
     Basic(AccountBasic),
     CodeHash(B256),
     Storage(U256),
@@ -176,7 +185,7 @@ pub enum MemoryValue {
 }
 
 #[derive(Debug)]
-pub enum MemoryEntry {
+pub(crate) enum MemoryEntry {
     Data(TxIncarnation, MemoryValue),
     // When an incarnation is aborted due to a validation failure, the
     // entries in the multi-version data structure corresponding to its
@@ -191,14 +200,6 @@ pub enum MemoryEntry {
     Estimate,
 }
 
-// The index of the transaction in the block.
-// TODO: Consider downsizing to [u32].
-pub type TxIdx = usize;
-
-// The i-th time a transaction is re-executed, counting from 0.
-// TODO: Consider downsizing to [u32].
-pub type TxIncarnation = usize;
-
 // - ReadyToExecute(i) --try_incarnate--> Executing(i)
 // Non-blocked execution:
 //   - Executing(i) --finish_execution--> Executed(i)
@@ -209,7 +210,7 @@ pub type TxIncarnation = usize;
 //   - Executing(i) --add_dependency--> Aborting(i)
 //   - Aborting(i) --resume--> ReadyToExecute(i+1)
 #[derive(PartialEq, Debug)]
-enum IncarnationStatus {
+pub(crate) enum IncarnationStatus {
     ReadyToExecute,
     Executing,
     Executed,
@@ -218,9 +219,9 @@ enum IncarnationStatus {
 }
 
 #[derive(PartialEq, Debug)]
-struct TxStatus {
-    incarnation: TxIncarnation,
-    status: IncarnationStatus,
+pub(crate) struct TxStatus {
+    pub(crate) incarnation: TxIncarnation,
+    pub(crate) status: IncarnationStatus,
 }
 
 // We maintain an in-memory multi-version data structure that stores for
@@ -263,13 +264,13 @@ pub(crate) type WriteSet = Vec<(MemoryLocationHash, MemoryValue)>;
 // the end of block execution, while waiting for a huge blocking
 // transaction to resolve, etc.
 #[derive(Debug)]
-enum Task {
+pub(crate) enum Task {
     Execution(TxVersion),
     Validation(TxVersion),
 }
 
 bitflags! {
-    struct FinishExecFlags: u8 {
+    pub(crate) struct FinishExecFlags: u8 {
         // Do we need to validate from this transaction?
         // The first and lazy transactions don't need validation. Note
         // that this is used to tune the min validation index in the

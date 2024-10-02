@@ -29,14 +29,17 @@ revm-primitives.workspace = true
 ahash = { version = "0.8.11", features = ["serde"] }
 
 # Alloy
+alloy-chains.workspace = true
 alloy-consensus.workspace = true
 alloy-primitives.workspace = true
 alloy-provider.workspace = true
 alloy-eips.workspace = true
+alloy-rlp.workspace = true
 alloy-rpc-types.workspace = true
 alloy-sol-types.workspace = true
 alloy-transport.workspace = true
 alloy-transport-http.workspace = true
+alloy-trie.workspace = true
 
 bitflags.workspace = true
 bitvec = "1.0.1"
@@ -58,3 +61,4 @@ alloy-consensus.workspace = true
 [features]
 default = ["std"]
 std = []
+prallel=[]

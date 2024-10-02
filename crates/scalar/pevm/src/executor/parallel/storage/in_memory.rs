@@ -4,10 +4,10 @@ use alloy_primitives::{keccak256, Address, B256, U256};
 
 use super::Storage;
 use super::{BlockHashes, Bytecodes, ChainState, EvmCode};
-use crate::types::{AccountBasic, EvmAccount};
+use crate::executor::parallel::types::{AccountBasic, EvmAccount};
 /// A storage that stores chain data in memory.
 #[derive(Debug, Default, Clone)]
-pub struct InMemoryStorage<'a> {
+pub(crate) struct InMemoryStorage<'a> {
     accounts: ChainState,
     bytecodes: Option<&'a Bytecodes>,
     block_hashes: BlockHashes,
@@ -15,7 +15,7 @@ pub struct InMemoryStorage<'a> {
 
 impl<'a> InMemoryStorage<'a> {
     /// Construct a new [InMemoryStorage]
-    pub fn new(
+    pub(crate) fn new(
         accounts: impl IntoIterator<Item = (Address, EvmAccount)>,
         bytecodes: Option<&'a Bytecodes>,
         block_hashes: impl IntoIterator<Item = (u64, B256)>,

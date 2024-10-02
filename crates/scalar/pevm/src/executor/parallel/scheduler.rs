@@ -9,7 +9,9 @@ use std::{
 
 use smallvec::SmallVec;
 
-use crate::{FinishExecFlags, IncarnationStatus, Task, TxIdx, TxStatus, TxVersion};
+use crate::{executor::parallel::types::IncarnationStatus, index_mutex};
+
+use super::types::{FinishExecFlags, Task, TxIdx, TxStatus, TxVersion};
 
 // The Pevm collaborative scheduler coordinates execution & validation
 // tasks among work threads.
@@ -96,10 +98,7 @@ impl Scheduler {
             let mut tx = index_mutex!(self.transactions_status, tx_idx);
             if tx.status == IncarnationStatus::ReadyToExecute {
                 tx.status = IncarnationStatus::Executing;
-                return Some(TxVersion {
-                    tx_idx,
-                    tx_incarnation: tx.incarnation,
-                });
+                return Some(TxVersion { tx_idx, tx_incarnation: tx.incarnation });
             }
         }
         None
@@ -172,10 +171,8 @@ impl Scheduler {
         // This is an important lock to prevent a race condition where the blocking
         // transaction completes re-execution before this dependency can be added.
         let blocking_tx = index_mutex!(self.transactions_status, blocking_tx_idx);
-        if matches!(
-            blocking_tx.status,
-            IncarnationStatus::Executed | IncarnationStatus::Validated
-        ) {
+        if matches!(blocking_tx.status, IncarnationStatus::Executed | IncarnationStatus::Validated)
+        {
             return false;
         }
 
@@ -216,8 +213,7 @@ impl Scheduler {
         // Decide where to validate from next
         let min_validation_idx = if flags.contains(FinishExecFlags::NeedValidation) {
             min(
-                self.min_validation_idx
-                    .fetch_min(tx_version.tx_idx, Ordering::Release),
+                self.min_validation_idx.fetch_min(tx_version.tx_idx, Ordering::Release),
                 tx_version.tx_idx,
             )
         } else {
@@ -228,16 +224,14 @@ impl Scheduler {
             // Must re-validate from min as this transaction is lower
             if tx_version.tx_idx < min_validation_idx {
                 if flags.contains(FinishExecFlags::WroteNewLocation) {
-                    self.validation_idx
-                        .fetch_min(min_validation_idx, Ordering::Release);
+                    self.validation_idx.fetch_min(min_validation_idx, Ordering::Release);
                 }
             }
             // Validate from this transaction as it's in between min and the current
             // validation index.
             else if tx_version.tx_idx < self.validation_idx.load(Ordering::Acquire) {
                 if flags.contains(FinishExecFlags::WroteNewLocation) {
-                    self.validation_idx
-                        .fetch_min(tx_version.tx_idx + 1, Ordering::Release);
+                    self.validation_idx.fetch_min(tx_version.tx_idx + 1, Ordering::Release);
                 }
                 if flags.contains(FinishExecFlags::NeedValidation) {
                     tx.status = IncarnationStatus::Executed;
@@ -270,10 +264,8 @@ impl Scheduler {
             self.num_validated.fetch_sub(1, Ordering::Release);
         }
 
-        let aborting = matches!(
-            tx.status,
-            IncarnationStatus::Executed | IncarnationStatus::Validated
-        );
+        let aborting =
+            matches!(tx.status, IncarnationStatus::Executed | IncarnationStatus::Validated);
         if aborting {
             tx.status = IncarnationStatus::Aborting;
         }
@@ -286,8 +278,7 @@ impl Scheduler {
     pub(crate) fn finish_validation(&self, tx_version: &TxVersion, aborted: bool) -> Option<Task> {
         if aborted {
             self.set_ready_status(tx_version.tx_idx);
-            self.validation_idx
-                .fetch_min(tx_version.tx_idx + 1, Ordering::Release);
+            self.validation_idx.fetch_min(tx_version.tx_idx + 1, Ordering::Release);
             if self.execution_idx.load(Ordering::Acquire) > tx_version.tx_idx {
                 return self.try_execute(tx_version.tx_idx).map(Task::Execution);
             }
