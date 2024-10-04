@@ -1,14 +1,61 @@
 /// Custom EVM configuration
+use alloy_primitives::{address, Address, Bytes, U256};
+use clap::{Args, Parser};
+use reth::{args::utils::DefaultChainSpecParser, cli::Cli};
+use reth::{
+    builder::{
+        components::{ExecutorBuilder, PayloadServiceBuilder},
+        BuilderContext,
+    },
+    payload::{EthBuiltPayload, EthPayloadBuilderAttributes},
+    primitives::revm_primitives::{Env, PrecompileResult},
+    revm::{
+        handler::register::EvmHandler,
+        inspector_handle_register,
+        precompile::{Precompile, PrecompileOutput, PrecompileSpecId},
+        primitives::BlockEnv,
+        ContextPrecompiles, Database, Evm, EvmBuilder, GetInspector,
+    },
+    rpc::types::engine::PayloadAttributes,
+    transaction_pool::TransactionPool,
+};
+use reth_chainspec::ChainSpec;
+use reth_evm_ethereum::EthEvmConfig;
+use reth_node_api::{
+    ConfigureEvm, ConfigureEvmEnv, FullNodeTypes, NextBlockEnvAttributes, NodeTypes,
+    NodeTypesWithEngine, PayloadTypes,
+};
+use reth_node_builder::{
+    engine_tree_config::{
+        TreeConfig, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD,
+    },
+    EngineNodeLauncher,
+};
+use reth_node_ethereum::{
+    node::{EthereumAddOns, EthereumPayloadBuilder},
+    EthereumNode,
+};
+use reth_primitives::{
+    revm_primitives::{CfgEnvWithHandlerCfg, TxEnv},
+    Header, TransactionSigned,
+};
+use reth_provider::providers::BlockchainProvider2;
+use reth_tracing::{RethTracer, Tracer};
+use scalar_pevm::executor::parallel::context::ParallelEvmContextTrait;
+use scalar_pevm::executor::parallel::ParallelEvmContext;
+use scalar_pevm::executor::{EthExecutorProvider, ParallelExecutorProvider};
+use std::sync::Arc;
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ScalarEvmConfig {
     /// Wrapper around mainnet configuration
     inner: EthEvmConfig,
+    context: ParallelEvmContext,
 }
 
 impl ScalarEvmConfig {
     pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
-        Self { inner: EthEvmConfig::new(chain_spec) }
+        Self { inner: EthEvmConfig::new(chain_spec), context: ParallelEvmContext::default() }
     }
 }
 
@@ -81,7 +128,7 @@ impl ConfigureEvmEnv for ScalarEvmConfig {
 /// Implement the EVM configuration for the custom EVM
 /// ParallelEvmContext is used to keep inmemory state for the EVM
 impl ConfigureEvm for ScalarEvmConfig {
-    type DefaultExternalContext<'a> = ParallelEvmContext<'a>;
+    type DefaultExternalContext<'_> = ParallelEvmContext<'_>;
 
     fn evm<DB: Database>(&self, db: DB) -> Evm<'_, Self::DefaultExternalContext<'_>, DB> {
         EvmBuilder::default()
@@ -107,6 +154,7 @@ impl ConfigureEvm for ScalarEvmConfig {
     }
 
     fn default_external_context<'a>(&self) -> Self::DefaultExternalContext<'a> {
-        Self::DefaultExternalContext::default()
+        // Self::DefaultExternalContext::default()
+        self.context.clone()
     }
 }

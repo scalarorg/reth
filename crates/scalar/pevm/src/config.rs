@@ -9,6 +9,15 @@ use revm_primitives::{
     AnalysisKind, BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, Env, SpecId, TxEnv,
 };
 use std::sync::Arc;
+
+// use crate::executor::parallel::ParallelEvmContext;
+// pub trait ConfigureEvmWitchContext: ConfigureEvm {
+//     type DefaultExternalContext;
+// }
+
+// impl ConfigureEvmWitchContext for EthEvmConfig {
+//     type DefaultExternalContext = ParallelEvmContext;
+// }
 /// Returns the revm [`SpecId`](revm_primitives::SpecId) at the given timestamp.
 ///
 /// # Note

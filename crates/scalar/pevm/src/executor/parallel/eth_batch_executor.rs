@@ -1,8 +1,8 @@
 //! Ethereum block executor.
 
 use super::{
-    eth_evm_executor::ParallelEthExecuteOutput, storage::InMemoryStorage, ParallelEthBlockExecutor,
-    ParallelEvmContext,
+    context::ParallelEvmContextTrait, eth_evm_executor::ParallelEthExecuteOutput,
+    storage::InMemoryStorage, ParallelEthBlockExecutor, ParallelEvmContext,
 };
 use alloy_primitives::BlockNumber;
 use core::fmt::Display;
@@ -25,10 +25,9 @@ pub struct ParallelEthBatchExecutor<'a, EvmConfig, DB> {
     /// The executor used to execute single blocks
     ///
     /// All state changes are committed to the [State].
-    pub(crate) executor: ParallelEthBlockExecutor<EvmConfig, DB>,
+    pub(crate) executor: ParallelEthBlockExecutor<'a, EvmConfig, DB>,
     /// Keeps track of the batch and records receipts based on the configured prune mode
     pub(crate) batch_record: BlockBatchRecord,
-    pub(crate) storage: Arc<InMemoryStorage<'a>>,
 }
 
 impl<'a, EvmConfig, DB> ParallelEthBatchExecutor<'a, EvmConfig, DB> {
@@ -41,8 +40,7 @@ impl<'a, EvmConfig, DB> ParallelEthBatchExecutor<'a, EvmConfig, DB> {
 
 impl<'a, EvmConfig, DB> BatchExecutor<DB> for ParallelEthBatchExecutor<'a, EvmConfig, DB>
 where
-    EvmConfig:
-        ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext<'static>>,
+    EvmConfig: ConfigureEvm<Header = Header>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
     type Input<'b> = BlockExecutionInput<'b, BlockWithSenders>;

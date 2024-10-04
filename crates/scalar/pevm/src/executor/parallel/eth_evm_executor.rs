@@ -16,7 +16,7 @@ use reth_primitives::{BlockWithSenders, Header, Receipt, Request};
 use reth_revm::{db::State, Evm};
 use revm_primitives::{
     db::{Database, DatabaseCommit},
-    ResultAndState, TxEnv,
+    EnvWithHandlerCfg, ResultAndState, TxEnv,
 };
 use std::{
     num::NonZeroUsize,
@@ -32,7 +32,7 @@ use tokio::{
 use crate::index_mutex;
 
 use super::{
-    chain::PevmChain,
+    chain::{PevmChain, PevmEthereum},
     context::ParallelEvmContextTrait,
     evm::{EvmWrapper, ExecutionError, PevmTxExecutionResult, VmExecutionError, VmExecutionResult},
     memory::MvMemory,
@@ -91,7 +91,7 @@ impl<T> AsyncDropper<T> {
 }
 
 /// Helper type for the output of executing a block.
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub(super) struct ParallelEthExecuteOutput {
     pub(super) receipts: Vec<Receipt>,
     pub(super) requests: Vec<Request>,
@@ -166,13 +166,13 @@ where
     ///
     /// It does __not__ apply post-execution changes that do not require an [EVM](Evm), for that see
     /// [`EthBlockExecutor::post_execution`].
-    pub(super) fn execute_state_transitions<Ext, DB>(
+    pub(super) fn execute_state_transitions<'a, Ext, DB>(
         &self,
         block: &BlockWithSenders,
         mut evm: Evm<'_, Ext, &mut State<DB>>,
+        storage: &InMemoryStorage<'a>,
     ) -> Result<ParallelEthExecuteOutput, BlockExecutionError>
     where
-        Ext: ParallelEvmContextTrait,
         DB: Database,
         DB::Error: Into<ProviderError> + Display,
     {
@@ -193,7 +193,6 @@ where
             block.parent_hash,
             &mut evm,
         )?;
-
         // The merge from September 15, 2022
         let block_env = evm.block_mut();
         self.evm_config.fill_block_env(block_env, &block.header, true);
@@ -210,24 +209,26 @@ where
         let runtime: Runtime = self.prepare_runtime(concurrency_level).map_err(|err| {
             BlockExecutionError::Internal(InternalBlockExecutionError::Other(Box::new(err)))
         })?;
-        //Initialize empty memory for WrapperEvm
-        let mv_memory = MvMemory::new(tx_envs.len(), [], []);
+        let block_env = evm.block().clone();
         let block_size = tx_envs.len();
         let scheduler = Scheduler::new(block_size);
-        //Prepare storage for wrapper EVM
-        let storage = preapre_internal_storage(&mut evm, block);
+
+        let chain = PevmEthereum::mainnet();
+        // Initialize empty memory for WrapperEvm
+        let mv_memory = MvMemory::new(tx_envs.len(), [], []);
         let evm = EvmWrapper::new(
             &self.hasher,
             storage,
             &mv_memory,
-            chain,
-            evm.block(),
+            &chain,
+            &block_env,
             &tx_envs,
             evm.spec_id(),
         );
 
+        let mv_memory_ref = &mv_memory;
         for _ in 0..concurrency_level {
-            runtime.spawn(async {
+            runtime.spawn(async move {
                 let mut task = scheduler.next_task();
                 while task.is_some() {
                     task = match task.unwrap() {
@@ -235,7 +236,7 @@ where
                             self.try_execute(&evm, &scheduler, tx_version)
                         }
                         Task::Validation(tx_version) => {
-                            try_validate(&mv_memory, &scheduler, &tx_version)
+                            try_validate(mv_memory_ref, &scheduler, &tx_version)
                         }
                     };
 
@@ -256,8 +257,8 @@ where
             });
         }
 
-        // let mut cumulative_gas_used = 0;
-        // let mut receipts = Vec::with_capacity(block.body.transactions.len());
+        let mut cumulative_gas_used = 0;
+        let mut receipts = Vec::with_capacity(block.body.transactions.len());
         // for (sender, transaction) in block.transactions_with_sender() {
         //     // The sum of the transaction’s gas limit, Tg, and the gas utilized in this block prior,
         //     // must be no greater than the block’s gasLimit.
@@ -301,7 +302,7 @@ where
         //         },
         //     );
         // }
-
+        let requests = vec![];
         // let requests = if self.chain_spec.is_prague_active_at_timestamp(block.timestamp) {
         //     // Collect all EIP-6110 deposits
         //     let deposit_requests =
@@ -322,7 +323,7 @@ where
 
         Ok(ParallelEthExecuteOutput { receipts, requests, gas_used: cumulative_gas_used as u64 })
     }
-    fn try_execute<'a, S: Storage, C: PevmChain>(
+    fn try_execute<'a, S: Storage + 'a, C: PevmChain + 'a>(
         &self,
         vm: &EvmWrapper<'a, S, C>,
         scheduler: &Scheduler,
