@@ -1,6 +1,7 @@
 //! Ethereum evm executor.
 
 use alloc::{boxed::Box, vec, vec::Vec};
+use async_scoped::{spawner::Spawner, Scope, TokioScope};
 use core::fmt::Display;
 use reth_chainspec::{ChainSpec, EthereumHardforks};
 use reth_evm::{
@@ -166,13 +167,14 @@ where
     ///
     /// It does __not__ apply post-execution changes that do not require an [EVM](Evm), for that see
     /// [`EthBlockExecutor::post_execution`].
-    pub(super) fn execute_state_transitions<'a, Ext, DB>(
+    pub(super) fn execute_state_transitions<S, Ext, DB>(
         &self,
         block: &BlockWithSenders,
         mut evm: Evm<'_, Ext, &mut State<DB>>,
-        storage: &InMemoryStorage<'a>,
+        storage: &S,
     ) -> Result<ParallelEthExecuteOutput, BlockExecutionError>
     where
+        S: Storage + Send + Sync,
         DB: Database,
         DB::Error: Into<ProviderError> + Display,
     {
@@ -226,35 +228,39 @@ where
             evm.spec_id(),
         );
 
-        let mv_memory_ref = &mv_memory;
         for _ in 0..concurrency_level {
-            runtime.spawn(async move {
-                let mut task = scheduler.next_task();
-                while task.is_some() {
-                    task = match task.unwrap() {
-                        Task::Execution(tx_version) => {
-                            self.try_execute(&evm, &scheduler, tx_version)
-                        }
-                        Task::Validation(tx_version) => {
-                            try_validate(mv_memory_ref, &scheduler, &tx_version)
-                        }
-                    };
+            unsafe {
+                TokioScope::scope(|scope| {
+                    // Use the scope to spawn the future.
+                    scope.spawn(async {
+                        let mut task = scheduler.next_task();
+                        while task.is_some() {
+                            task = match task.unwrap() {
+                                Task::Execution(tx_version) => {
+                                    self.try_execute(&evm, &scheduler, tx_version)
+                                }
+                                Task::Validation(tx_version) => {
+                                    try_validate(&mv_memory, &scheduler, &tx_version)
+                                }
+                            };
 
-                    // TODO: Have different functions or an enum for the caller to choose
-                    // the handling behaviour when a transaction's EVM execution fails.
-                    // Parallel block builders would like to exclude such transaction,
-                    // verifiers may want to exit early to save CPU cycles, while testers
-                    // may want to collect all execution results. We are exiting early as
-                    // the default behaviour for now.
-                    if self.abort_reason.get().is_some() {
-                        break;
-                    }
+                            // TODO: Have different functions or an enum for the caller to choose
+                            // the handling behaviour when a transaction's EVM execution fails.
+                            // Parallel block builders would like to exclude such transaction,
+                            // verifiers may want to exit early to save CPU cycles, while testers
+                            // may want to collect all execution results. We are exiting early as
+                            // the default behaviour for now.
+                            if self.abort_reason.get().is_some() {
+                                break;
+                            }
 
-                    if task.is_none() {
-                        task = scheduler.next_task();
-                    }
-                }
-            });
+                            if task.is_none() {
+                                task = scheduler.next_task();
+                            }
+                        }
+                    });
+                });
+            }
         }
 
         let mut cumulative_gas_used = 0;

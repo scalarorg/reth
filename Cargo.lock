@@ -1027,6 +1027,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-scoped"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4042078ea593edffc452eef14e99fdb2b120caa4ad9618bcdeabc4a023b98740"
+dependencies = [
+ "futures",
+ "pin-project",
+ "tokio",
+]
+
+[[package]]
 name = "async-sse"
 version = "5.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9533,6 +9544,7 @@ dependencies = [
  "alloy-transport",
  "alloy-transport-http",
  "alloy-trie",
+ "async-scoped",
  "bitflags 2.6.0",
  "bitvec",
  "dashmap 6.1.0",

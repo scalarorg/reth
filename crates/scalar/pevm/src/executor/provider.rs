@@ -129,10 +129,9 @@ where
     }
 }
 
-impl<'a, EvmConfig> BlockExecutorProvider for ParallelExecutorProvider<EvmConfig>
+impl<EvmConfig> BlockExecutorProvider for ParallelExecutorProvider<EvmConfig>
 where
-    EvmConfig: ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext>
-        + ParallelEvmContextTrait,
+    EvmConfig: ConfigureEvm<Header = Header>,
 {
     type Executor<DB: Database<Error: Into<ProviderError> + Display>> =
         ParallelEthBlockExecutor<EvmConfig, DB>;
