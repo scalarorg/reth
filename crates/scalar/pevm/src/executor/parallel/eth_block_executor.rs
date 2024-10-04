@@ -1,10 +1,9 @@
 //! Ethereum block executor.
 
-use super::{eth_evm_executor::ParallelEthExecuteOutput, ParallelEthEvmExecutor};
-use crate::{
-    dao_fork::{DAO_HARDFORK_BENEFICIARY, DAO_HARDKFORK_ACCOUNTS},
-    executor::parallel::eth_evm_executor::AbortReason,
+use super::{
+    eth_evm_executor::ParallelEthExecuteOutput, ParallelEthEvmExecutor, ParallelEvmContext,
 };
+use crate::dao_fork::{DAO_HARDFORK_BENEFICIARY, DAO_HARDKFORK_ACCOUNTS};
 use alloc::sync::Arc;
 use alloy_primitives::U256;
 use core::fmt::Display;
@@ -22,8 +21,6 @@ use reth_revm::{
     state_change::post_block_balance_increments,
 };
 use revm_primitives::{db::Database, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg};
-use std::sync::OnceLock;
-
 /// A basic Ethereum block executor.
 ///
 /// Expected usage:
@@ -39,16 +36,8 @@ pub struct ParallelEthBlockExecutor<EvmConfig, DB> {
 
 impl<EvmConfig, DB> ParallelEthBlockExecutor<EvmConfig, DB> {
     /// Creates a new Ethereum block executor.
-    pub const fn new(chain_spec: Arc<ChainSpec>, evm_config: EvmConfig, state: State<DB>) -> Self {
-        Self {
-            executor: ParallelEthEvmExecutor {
-                chain_spec,
-                evm_config,
-                abort_reason: OnceLock::new(),
-                execution_results: Vec::new(),
-            },
-            state,
-        }
+    pub fn new(chain_spec: Arc<ChainSpec>, evm_config: EvmConfig, state: State<DB>) -> Self {
+        Self { executor: ParallelEthEvmExecutor::new(chain_spec, evm_config), state }
     }
 
     #[inline]
@@ -63,9 +52,10 @@ impl<EvmConfig, DB> ParallelEthBlockExecutor<EvmConfig, DB> {
     }
 }
 
-impl<EvmConfig, DB> ParallelEthBlockExecutor<EvmConfig, DB>
+impl<'a, EvmConfig, DB> ParallelEthBlockExecutor<EvmConfig, DB>
 where
-    EvmConfig: ConfigureEvm<Header = Header>,
+    EvmConfig:
+        ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext<'static>>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
     /// Configures a new evm configuration and block environment for the given block.
@@ -102,6 +92,7 @@ where
 
         // 2. configure the evm and execute
         let env = self.evm_env_for_block(&block.header, total_difficulty);
+        let ext_context = self.executor.evm_config.default_external_context();
         let output = {
             let evm = self.executor.evm_config.evm_with_env(&mut self.state, env);
             self.executor.execute_state_transitions(block, evm)
@@ -152,12 +143,13 @@ where
     }
 }
 
-impl<EvmConfig, DB> Executor<DB> for ParallelEthBlockExecutor<EvmConfig, DB>
+impl<'a, EvmConfig, DB> Executor<DB> for ParallelEthBlockExecutor<EvmConfig, DB>
 where
-    EvmConfig: ConfigureEvm<Header = Header>,
+    EvmConfig:
+        ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext<'static>>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
-    type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
+    type Input<'b> = BlockExecutionInput<'b, BlockWithSenders>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;
 

@@ -4,7 +4,9 @@ use alloy_primitives::{keccak256, Address, B256, U256};
 
 use super::Storage;
 use super::{BlockHashes, Bytecodes, ChainState, EvmCode};
-use crate::executor::parallel::types::{AccountBasic, EvmAccount};
+use crate::executor::parallel::types::{
+    AccountBasic, BuildIdentityHasher, BuildSuffixHasher, EvmAccount,
+};
 /// A storage that stores chain data in memory.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct InMemoryStorage<'a> {
@@ -25,6 +27,9 @@ impl<'a> InMemoryStorage<'a> {
             bytecodes,
             block_hashes: block_hashes.into_iter().collect(),
         }
+    }
+    pub(crate) fn set_block_hash(&mut self, number: u64, hash: B256) {
+        self.block_hashes.insert(number, hash);
     }
 }
 

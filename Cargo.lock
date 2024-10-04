@@ -9541,6 +9541,7 @@ dependencies = [
  "reth-ethereum-consensus",
  "reth-ethereum-forks",
  "reth-evm",
+ "reth-execution-errors",
  "reth-execution-types",
  "reth-primitives",
  "reth-prune-types",

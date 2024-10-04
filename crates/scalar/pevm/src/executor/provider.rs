@@ -1,6 +1,8 @@
 //! Ethereum block executor.
 
 use super::parallel::chain::{PevmChain, PevmEthereum};
+use super::parallel::storage::InMemoryStorage;
+use super::parallel::ParallelEvmContext;
 use super::{
     EthBatchExecutor, EthBlockExecutor, ParallelEthBatchExecutor, ParallelEthBlockExecutor,
 };
@@ -86,12 +88,13 @@ where
 
 /// Parallel executor provider for creating pevm executor
 #[derive(Debug, Clone)]
-pub struct ParallelExecutorProvider<EvmConfig = EthEvmConfig> {
+pub struct ParallelExecutorProvider<'a, EvmConfig = EthEvmConfig> {
     pub(super) chain_spec: Arc<ChainSpec>,
     pub(super) evm_config: EvmConfig,
+    pub(super) storage: Arc<InMemoryStorage<'a>>,
 }
 
-impl ParallelExecutorProvider {
+impl<'a> ParallelExecutorProvider<'a> {
     /// Creates a new default ethereum executor provider.
     pub fn ethereum(chain_spec: Arc<ChainSpec>) -> Self {
         Self::new(chain_spec.clone(), EthEvmConfig::new(chain_spec))
@@ -103,14 +106,14 @@ impl ParallelExecutorProvider {
     }
 }
 
-impl<EvmConfig> ParallelExecutorProvider<EvmConfig> {
+impl<'a, EvmConfig> ParallelExecutorProvider<'a, EvmConfig> {
     /// Creates a new executor provider.
-    pub const fn new(chain_spec: Arc<ChainSpec>, evm_config: EvmConfig) -> Self {
-        Self { chain_spec, evm_config }
+    pub fn new(chain_spec: Arc<ChainSpec>, evm_config: EvmConfig) -> Self {
+        Self { chain_spec, evm_config, storage: Arc::new(InMemoryStorage::default()) }
     }
 }
 
-impl<EvmConfig> ParallelExecutorProvider<EvmConfig>
+impl<'a, EvmConfig> ParallelExecutorProvider<'a, EvmConfig>
 where
     EvmConfig: ConfigureEvm<Header = Header>,
 {
@@ -126,9 +129,9 @@ where
     }
 }
 
-impl<EvmConfig> BlockExecutorProvider for ParallelExecutorProvider<EvmConfig>
+impl<'a, EvmConfig> BlockExecutorProvider for ParallelExecutorProvider<'a, EvmConfig>
 where
-    EvmConfig: ConfigureEvm<Header = Header>,
+    EvmConfig: ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext<'a>>,
 {
     type Executor<DB: Database<Error: Into<ProviderError> + Display>> =
         ParallelEthBlockExecutor<EvmConfig, DB>;
@@ -148,6 +151,10 @@ where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
         let executor = self.eth_executor(db);
-        ParallelEthBatchExecutor { executor, batch_record: BlockBatchRecord::default() }
+        ParallelEthBatchExecutor {
+            executor,
+            batch_record: BlockBatchRecord::default(),
+            storage: self.storage.clone(),
+        }
     }
 }

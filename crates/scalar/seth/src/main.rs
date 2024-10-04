@@ -1,9 +1,12 @@
 //! This example shows how to implement a node with a custom EVM
 
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
-
+mod builder;
+mod config;
 use alloy_primitives::{address, Address, Bytes, U256};
+use builder::*;
 use clap::{Args, Parser};
+use config::*;
 use reth::{args::utils::DefaultChainSpecParser, cli::Cli};
 use reth::{
     builder::{
@@ -44,9 +47,9 @@ use reth_primitives::{
 };
 use reth_provider::providers::BlockchainProvider2;
 use reth_tracing::{RethTracer, Tracer};
+use scalar_pevm::executor::parallel::ParallelEvmContext;
 use scalar_pevm::executor::{EthExecutorProvider, ParallelExecutorProvider};
 use std::sync::Arc;
-
 /// Parameters for configuring the engine
 #[derive(Debug, Clone, Args, PartialEq, Eq)]
 #[command(next_help_heading = "Engine")]
@@ -74,185 +77,6 @@ impl Default for EngineArgs {
     }
 }
 
-/// Custom EVM configuration
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct ScalarEvmConfig {
-    /// Wrapper around mainnet configuration
-    inner: EthEvmConfig,
-}
-
-impl ScalarEvmConfig {
-    pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
-        Self { inner: EthEvmConfig::new(chain_spec) }
-    }
-}
-
-impl ScalarEvmConfig {
-    /// Sets the precompiles to the EVM handler
-    ///
-    /// This will be invoked when the EVM is created via [ConfigureEvm::evm] or
-    /// [ConfigureEvm::evm_with_inspector]
-    ///
-    /// This will use the default mainnet precompiles and add additional precompiles.
-    pub fn set_precompiles<EXT, DB>(handler: &mut EvmHandler<EXT, DB>)
-    where
-        DB: Database,
-    {
-        // first we need the evm spec id, which determines the precompiles
-        let spec_id = handler.cfg.spec_id;
-
-        // install the precompiles
-        handler.pre_execution.load_precompiles = Arc::new(move || {
-            let mut precompiles = ContextPrecompiles::new(PrecompileSpecId::from_spec_id(spec_id));
-            precompiles.extend([(
-                address!("0000000000000000000000000000000000000999"),
-                Precompile::Env(Self::my_precompile).into(),
-            )]);
-            precompiles
-        });
-    }
-
-    /// A custom precompile that does nothing
-    fn my_precompile(_data: &Bytes, _gas: u64, _env: &Env) -> PrecompileResult {
-        Ok(PrecompileOutput::new(0, Bytes::new()))
-    }
-}
-
-impl ConfigureEvmEnv for ScalarEvmConfig {
-    type Header = Header;
-
-    fn fill_tx_env(&self, tx_env: &mut TxEnv, transaction: &TransactionSigned, sender: Address) {
-        self.inner.fill_tx_env(tx_env, transaction, sender);
-    }
-
-    fn fill_tx_env_system_contract_call(
-        &self,
-        env: &mut Env,
-        caller: Address,
-        contract: Address,
-        data: Bytes,
-    ) {
-        self.inner.fill_tx_env_system_contract_call(env, caller, contract, data);
-    }
-
-    fn fill_cfg_env(
-        &self,
-        cfg_env: &mut CfgEnvWithHandlerCfg,
-        header: &Self::Header,
-        total_difficulty: U256,
-    ) {
-        self.inner.fill_cfg_env(cfg_env, header, total_difficulty);
-    }
-
-    fn next_cfg_and_block_env(
-        &self,
-        parent: &Self::Header,
-        attributes: NextBlockEnvAttributes,
-    ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
-        self.inner.next_cfg_and_block_env(parent, attributes)
-    }
-}
-
-impl ConfigureEvm for ScalarEvmConfig {
-    type DefaultExternalContext<'a> = ();
-
-    fn evm<DB: Database>(&self, db: DB) -> Evm<'_, Self::DefaultExternalContext<'_>, DB> {
-        EvmBuilder::default()
-            .with_db(db)
-            // add additional precompiles
-            .append_handler_register(ScalarEvmConfig::set_precompiles)
-            .build()
-    }
-
-    fn evm_with_inspector<DB, I>(&self, db: DB, inspector: I) -> Evm<'_, I, DB>
-    where
-        DB: Database,
-        I: GetInspector<DB>,
-    {
-        EvmBuilder::default()
-            .with_db(db)
-            .with_external_context(inspector)
-            // add additional precompiles
-            .append_handler_register(ScalarEvmConfig::set_precompiles)
-            .append_handler_register(inspector_handle_register)
-            .build()
-    }
-
-    fn default_external_context<'a>(&self) -> Self::DefaultExternalContext<'a> {}
-}
-
-/// Builds a regular ethereum block executor that uses the custom EVM.
-#[derive(Debug, Default, Clone, Copy)]
-#[non_exhaustive]
-pub struct SequentialExecutorBuilder;
-
-impl<Node> ExecutorBuilder<Node> for SequentialExecutorBuilder
-where
-    Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec>>,
-{
-    type EVM = ScalarEvmConfig;
-    type Executor = EthExecutorProvider<Self::EVM>;
-    async fn build_evm(
-        self,
-        ctx: &BuilderContext<Node>,
-    ) -> eyre::Result<(Self::EVM, Self::Executor)> {
-        Ok((
-            ScalarEvmConfig::new(ctx.chain_spec()),
-            EthExecutorProvider::new(ctx.chain_spec(), ScalarEvmConfig::new(ctx.chain_spec())),
-        ))
-    }
-}
-
-/// Builds a regular ethereum block executor that uses the custom EVM.
-#[derive(Debug, Default, Clone, Copy)]
-#[non_exhaustive]
-pub struct ParallelExecutorBuilder;
-
-impl<Node> ExecutorBuilder<Node> for ParallelExecutorBuilder
-where
-    Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec>>,
-{
-    type EVM = ScalarEvmConfig;
-    type Executor = ParallelExecutorProvider<Self::EVM>;
-    async fn build_evm(
-        self,
-        ctx: &BuilderContext<Node>,
-    ) -> eyre::Result<(Self::EVM, Self::Executor)> {
-        let chain_spec = ctx.chain_spec();
-        Ok((
-            ScalarEvmConfig::new(chain_spec.clone()),
-            ParallelExecutorProvider::new(chain_spec.clone(), ScalarEvmConfig::new(chain_spec)),
-        ))
-    }
-}
-
-/// Builds a regular ethereum block executor that uses the custom EVM.
-#[derive(Debug, Default, Clone)]
-#[non_exhaustive]
-pub struct ScalarPayloadBuilder {
-    inner: EthereumPayloadBuilder,
-}
-
-impl<Types, Node, Pool> PayloadServiceBuilder<Node, Pool> for ScalarPayloadBuilder
-where
-    Types: NodeTypesWithEngine<ChainSpec = ChainSpec>,
-    Node: FullNodeTypes<Types = Types>,
-    Pool: TransactionPool + Unpin + 'static,
-    Types::Engine: PayloadTypes<
-        BuiltPayload = EthBuiltPayload,
-        PayloadAttributes = PayloadAttributes,
-        PayloadBuilderAttributes = EthPayloadBuilderAttributes,
-    >,
-{
-    async fn spawn_payload_service(
-        self,
-        ctx: &BuilderContext<Node>,
-        pool: Pool,
-    ) -> eyre::Result<reth::payload::PayloadBuilderHandle<Types::Engine>> {
-        self.inner.spawn(ScalarEvmConfig::new(ctx.chain_spec()), ctx, pool)
-    }
-}
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     let _guard = RethTracer::new().init()?;

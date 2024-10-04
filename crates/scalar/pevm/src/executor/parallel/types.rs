@@ -2,6 +2,9 @@ use ahash::AHashMap;
 use alloy_primitives::{Address, Bytes, B256, U256};
 use bitflags::bitflags;
 use bitvec::vec::BitVec;
+use reth_chainspec::Head;
+use reth_evm::ConfigureEvm;
+use reth_primitives::Header;
 use revm::{
     interpreter::analysis::to_analysed,
     primitives::{Account, AccountInfo, Bytecode, JumpTable, KECCAK_EMPTY},
@@ -11,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::{collections::HashMap, sync::Arc};
+
+use super::ParallelEvmContext;
 
 /// We use the last 8 bytes of an existing hash like address
 /// or code hash instead of rehashing it.
