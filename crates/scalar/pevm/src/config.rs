@@ -10,9 +10,11 @@ use revm_primitives::{
 };
 use std::sync::Arc;
 
+use crate::executor::parallel::context::ParallelEvmContextTrait;
+
 // use crate::executor::parallel::ParallelEvmContext;
 // pub trait ConfigureEvmWitchContext: ConfigureEvm {
-//     type DefaultExternalContext;
+//     type DefaultExternalContext: ParallelEvmContextTrait;
 // }
 
 // impl ConfigureEvmWitchContext for EthEvmConfig {

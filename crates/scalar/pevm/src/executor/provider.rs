@@ -2,7 +2,7 @@
 
 use super::parallel::chain::{PevmChain, PevmEthereum};
 use super::parallel::context::ParallelEvmContextTrait;
-use super::parallel::storage::InMemoryStorage;
+use super::parallel::storage::{InMemoryStorage, Storage};
 use super::parallel::ParallelEvmContext;
 use super::{
     EthBatchExecutor, EthBlockExecutor, ParallelEthBatchExecutor, ParallelEthBlockExecutor,

@@ -167,14 +167,13 @@ where
     ///
     /// It does __not__ apply post-execution changes that do not require an [EVM](Evm), for that see
     /// [`EthBlockExecutor::post_execution`].
-    pub(super) fn execute_state_transitions<S, Ext, DB>(
+    pub(super) fn execute_state_transitions<Ext, DB>(
         &self,
         block: &BlockWithSenders,
         mut evm: Evm<'_, Ext, &mut State<DB>>,
-        storage: &S,
     ) -> Result<ParallelEthExecuteOutput, BlockExecutionError>
     where
-        S: Storage + Send + Sync,
+        Ext: ParallelEvmContextTrait,
         DB: Database,
         DB::Error: Into<ProviderError> + Display,
     {
@@ -218,9 +217,11 @@ where
         let chain = PevmEthereum::mainnet();
         // Initialize empty memory for WrapperEvm
         let mv_memory = MvMemory::new(tx_envs.len(), [], []);
+        evm.context.external.set_block_hash(block.number, block.parent_hash);
+        let ref_storage = evm.context.external.storage();
         let evm = EvmWrapper::new(
             &self.hasher,
-            storage,
+            ref_storage,
             &mv_memory,
             &chain,
             &block_env,

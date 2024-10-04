@@ -1,8 +1,10 @@
 //! Ethereum block executor.
 
 use super::{
-    context::ParallelEvmContextTrait, eth_evm_executor::ParallelEthExecuteOutput,
-    storage::InMemoryStorage, ParallelEthEvmExecutor, ParallelEvmContext,
+    context::ParallelEvmContextTrait,
+    eth_evm_executor::ParallelEthExecuteOutput,
+    storage::{InMemoryStorage, Storage},
+    ParallelEthEvmExecutor, ParallelEvmContext,
 };
 use crate::dao_fork::{DAO_HARDFORK_BENEFICIARY, DAO_HARDKFORK_ACCOUNTS};
 use alloc::sync::Arc;
@@ -28,22 +30,17 @@ use revm_primitives::{db::Database, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandl
 /// - Create a new instance of the executor.
 /// - Execute the block.
 #[derive(Debug)]
-pub struct ParallelEthBlockExecutor<'a, EvmConfig, DB> {
+pub struct ParallelEthBlockExecutor<EvmConfig, DB> {
     /// Chain specific evm config that's used to execute a block.
     executor: ParallelEthEvmExecutor<EvmConfig>,
     /// The state to use for execution
     pub(super) state: State<DB>,
-    pub(super) storage: InMemoryStorage<'a>,
 }
 
-impl<'a, EvmConfig, DB> ParallelEthBlockExecutor<'a, EvmConfig, DB> {
+impl<EvmConfig, DB> ParallelEthBlockExecutor<EvmConfig, DB> {
     /// Creates a new Ethereum block executor.
     pub fn new(chain_spec: Arc<ChainSpec>, evm_config: EvmConfig, state: State<DB>) -> Self {
-        Self {
-            executor: ParallelEthEvmExecutor::new(chain_spec, evm_config),
-            state,
-            storage: InMemoryStorage::default(),
-        }
+        Self { executor: ParallelEthEvmExecutor::new(chain_spec, evm_config), state }
     }
 
     #[inline]
@@ -58,9 +55,9 @@ impl<'a, EvmConfig, DB> ParallelEthBlockExecutor<'a, EvmConfig, DB> {
     }
 }
 
-impl<'a, EvmConfig, DB> ParallelEthBlockExecutor<'a, EvmConfig, DB>
+impl<'a, EvmConfig, DB> ParallelEthBlockExecutor<EvmConfig, DB>
 where
-    EvmConfig: ConfigureEvm<Header = Header>,
+    EvmConfig: ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
     /// Configures a new evm configuration and block environment for the given block.
@@ -106,7 +103,7 @@ where
             //     evm.context.external.set_block_hash(block.number, block.mix_hash);
             //     evm.context.external.storage()
             // };
-            self.executor.execute_state_transitions(block, evm, &self.storage)
+            self.executor.execute_state_transitions(block, evm)
         }?;
 
         // 3. apply post execution changes
@@ -154,7 +151,7 @@ where
     }
 }
 
-impl<'a, EvmConfig, DB> Executor<DB> for ParallelEthBlockExecutor<'a, EvmConfig, DB>
+impl<EvmConfig, DB> Executor<DB> for ParallelEthBlockExecutor<EvmConfig, DB>
 where
     EvmConfig: ConfigureEvm<Header = Header>,
     DB: Database<Error: Into<ProviderError> + Display>,

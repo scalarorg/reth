@@ -1,8 +1,10 @@
 //! Ethereum block executor.
 
 use super::{
-    context::ParallelEvmContextTrait, eth_evm_executor::ParallelEthExecuteOutput,
-    storage::InMemoryStorage, ParallelEthBlockExecutor, ParallelEvmContext,
+    context::ParallelEvmContextTrait,
+    eth_evm_executor::ParallelEthExecuteOutput,
+    storage::{InMemoryStorage, Storage},
+    ParallelEthBlockExecutor, ParallelEvmContext,
 };
 use alloy_primitives::BlockNumber;
 use core::fmt::Display;
@@ -16,21 +18,20 @@ use reth_primitives::{BlockWithSenders, Header};
 use reth_prune_types::PruneModes;
 use reth_revm::{batch::BlockBatchRecord, db::State};
 use revm_primitives::db::Database;
-use std::sync::Arc;
 /// An executor for a batch of blocks.
 ///
 /// State changes are tracked until the executor is finalized.
 #[derive(Debug)]
-pub struct ParallelEthBatchExecutor<'a, EvmConfig, DB> {
+pub struct ParallelEthBatchExecutor<EvmConfig, DB> {
     /// The executor used to execute single blocks
     ///
     /// All state changes are committed to the [State].
-    pub(crate) executor: ParallelEthBlockExecutor<'a, EvmConfig, DB>,
+    pub(crate) executor: ParallelEthBlockExecutor<EvmConfig, DB>,
     /// Keeps track of the batch and records receipts based on the configured prune mode
     pub(crate) batch_record: BlockBatchRecord,
 }
 
-impl<'a, EvmConfig, DB> ParallelEthBatchExecutor<'a, EvmConfig, DB> {
+impl<EvmConfig, DB> ParallelEthBatchExecutor<EvmConfig, DB> {
     /// Returns mutable reference to the state that wraps the underlying database.
     #[allow(unused)]
     pub(crate) fn state_mut(&mut self) -> &mut State<DB> {
@@ -38,7 +39,7 @@ impl<'a, EvmConfig, DB> ParallelEthBatchExecutor<'a, EvmConfig, DB> {
     }
 }
 
-impl<'a, EvmConfig, DB> BatchExecutor<DB> for ParallelEthBatchExecutor<'a, EvmConfig, DB>
+impl<EvmConfig, DB> BatchExecutor<DB> for ParallelEthBatchExecutor<EvmConfig, DB>
 where
     EvmConfig: ConfigureEvm<Header = Header>,
     DB: Database<Error: Into<ProviderError> + Display>,
