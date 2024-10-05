@@ -1,11 +1,11 @@
 //! Ethereum evm executor.
 
 use alloc::{boxed::Box, vec, vec::Vec};
-use async_scoped::{spawner::Spawner, Scope, TokioScope};
+use async_scoped::TokioScope;
 use core::fmt::Display;
-use reth_chainspec::{ChainSpec, EthereumHardforks};
+use reth_chainspec::ChainSpec;
 use reth_evm::{
-    execute::{BlockExecutionError, BlockValidationError, ProviderError},
+    execute::{BlockExecutionError, ProviderError},
     system_calls::{
         apply_beacon_root_contract_call, apply_blockhashes_contract_call,
         apply_consolidation_requests_contract_call, apply_withdrawal_requests_contract_call,
@@ -15,10 +15,7 @@ use reth_evm::{
 use reth_execution_errors::InternalBlockExecutionError;
 use reth_primitives::{BlockWithSenders, Header, Receipt, Request};
 use reth_revm::{db::State, Evm};
-use revm_primitives::{
-    db::{Database, DatabaseCommit},
-    EnvWithHandlerCfg, ResultAndState, TxEnv,
-};
+use revm_primitives::{db::Database, TxEnv};
 use std::{
     num::NonZeroUsize,
     sync::{mpsc, Arc, Mutex, OnceLock},
@@ -27,7 +24,6 @@ use std::{
 use tokio::{
     io,
     runtime::{Builder, Runtime},
-    task::JoinHandle,
 };
 
 use crate::index_mutex;

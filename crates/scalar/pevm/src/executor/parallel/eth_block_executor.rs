@@ -1,10 +1,7 @@
 //! Ethereum block executor.
 
 use super::{
-    context::ParallelEvmContextTrait,
-    eth_evm_executor::ParallelEthExecuteOutput,
-    storage::{InMemoryStorage, Storage},
-    ParallelEthEvmExecutor, ParallelEvmContext,
+    eth_evm_executor::ParallelEthExecuteOutput, ParallelEthEvmExecutor, ParallelEvmContext,
 };
 use crate::dao_fork::{DAO_HARDFORK_BENEFICIARY, DAO_HARDKFORK_ACCOUNTS};
 use alloc::sync::Arc;
@@ -55,9 +52,10 @@ impl<EvmConfig, DB> ParallelEthBlockExecutor<EvmConfig, DB> {
     }
 }
 
-impl<'a, EvmConfig, DB> ParallelEthBlockExecutor<EvmConfig, DB>
+impl<EvmConfig, DB> ParallelEthBlockExecutor<EvmConfig, DB>
 where
-    EvmConfig: ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext>,
+    EvmConfig:
+        for<'a> ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
     /// Configures a new evm configuration and block environment for the given block.
@@ -153,7 +151,8 @@ where
 
 impl<EvmConfig, DB> Executor<DB> for ParallelEthBlockExecutor<EvmConfig, DB>
 where
-    EvmConfig: ConfigureEvm<Header = Header>,
+    EvmConfig:
+        for<'a> ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
     type Input<'b> = BlockExecutionInput<'b, BlockWithSenders>;

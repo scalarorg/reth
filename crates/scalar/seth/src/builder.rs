@@ -1,50 +1,18 @@
-use alloy_primitives::{address, Address, Bytes, U256};
-use clap::{Args, Parser};
-use reth::{args::utils::DefaultChainSpecParser, cli::Cli};
 use reth::{
     builder::{
         components::{ExecutorBuilder, PayloadServiceBuilder},
         BuilderContext,
     },
     payload::{EthBuiltPayload, EthPayloadBuilderAttributes},
-    primitives::revm_primitives::{Env, PrecompileResult},
-    revm::{
-        handler::register::EvmHandler,
-        inspector_handle_register,
-        precompile::{Precompile, PrecompileOutput, PrecompileSpecId},
-        primitives::BlockEnv,
-        ContextPrecompiles, Database, Evm, EvmBuilder, GetInspector,
-    },
     rpc::types::engine::PayloadAttributes,
     transaction_pool::TransactionPool,
 };
 use reth_chainspec::ChainSpec;
-use reth_evm_ethereum::EthEvmConfig;
-use reth_node_api::{
-    ConfigureEvm, ConfigureEvmEnv, FullNodeTypes, NextBlockEnvAttributes, NodeTypes,
-    NodeTypesWithEngine, PayloadTypes,
-};
-use reth_node_builder::{
-    engine_tree_config::{
-        TreeConfig, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD,
-    },
-    EngineNodeLauncher,
-};
-use reth_node_ethereum::{
-    node::{EthereumAddOns, EthereumPayloadBuilder},
-    EthereumNode,
-};
-use reth_primitives::{
-    revm_primitives::{CfgEnvWithHandlerCfg, TxEnv},
-    Header, TransactionSigned,
-};
-use reth_provider::providers::BlockchainProvider2;
-use reth_tracing::{RethTracer, Tracer};
-use scalar_pevm::executor::parallel::ParallelEvmContext;
+use reth_node_api::{FullNodeTypes, NodeTypes, NodeTypesWithEngine, PayloadTypes};
+use reth_node_ethereum::node::EthereumPayloadBuilder;
 use scalar_pevm::executor::{EthExecutorProvider, ParallelExecutorProvider};
-use std::sync::Arc;
 
-use crate::ScalarEvmConfig;
+use crate::{ParallelEvmConfig, SequencialEvmConfig};
 
 /// Builds a regular ethereum block executor that uses the custom EVM.
 #[derive(Debug, Default, Clone, Copy)]
@@ -55,15 +23,15 @@ impl<Node> ExecutorBuilder<Node> for SequentialExecutorBuilder
 where
     Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec>>,
 {
-    type EVM = ScalarEvmConfig;
+    type EVM = SequencialEvmConfig;
     type Executor = EthExecutorProvider<Self::EVM>;
     async fn build_evm(
         self,
         ctx: &BuilderContext<Node>,
     ) -> eyre::Result<(Self::EVM, Self::Executor)> {
         Ok((
-            ScalarEvmConfig::new(ctx.chain_spec()),
-            EthExecutorProvider::new(ctx.chain_spec(), ScalarEvmConfig::new(ctx.chain_spec())),
+            SequencialEvmConfig::new(ctx.chain_spec()),
+            EthExecutorProvider::new(ctx.chain_spec(), SequencialEvmConfig::new(ctx.chain_spec())),
         ))
     }
 }
@@ -77,14 +45,19 @@ impl<Node> ExecutorBuilder<Node> for ParallelExecutorBuilder
 where
     Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec>>,
 {
-    type EVM = ScalarEvmConfig;
+    type EVM = ParallelEvmConfig;
     type Executor = ParallelExecutorProvider<Self::EVM>;
     async fn build_evm(
         self,
         ctx: &BuilderContext<Node>,
     ) -> eyre::Result<(Self::EVM, Self::Executor)> {
-        let chain_spec = ctx.chain_spec();
-        Ok((ParallelExecutorProvider::new(chain_spec.clone(), ScalarEvmConfig::new(chain_spec)),))
+        Ok((
+            ParallelEvmConfig::new(ctx.chain_spec()),
+            ParallelExecutorProvider::new(
+                ctx.chain_spec(),
+                ParallelEvmConfig::new(ctx.chain_spec()),
+            ),
+        ))
     }
 }
 
@@ -111,6 +84,6 @@ where
         ctx: &BuilderContext<Node>,
         pool: Pool,
     ) -> eyre::Result<reth::payload::PayloadBuilderHandle<Types::Engine>> {
-        self.inner.spawn(ScalarEvmConfig::new(ctx.chain_spec()), ctx, pool)
+        self.inner.spawn(ParallelEvmConfig::new(ctx.chain_spec()), ctx, pool)
     }
 }

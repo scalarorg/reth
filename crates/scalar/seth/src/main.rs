@@ -3,53 +3,20 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 mod builder;
 mod config;
-use alloy_primitives::{address, Address, Bytes, U256};
 use builder::*;
 use clap::{Args, Parser};
 use config::*;
 use reth::{args::utils::DefaultChainSpecParser, cli::Cli};
-use reth::{
-    builder::{
-        components::{ExecutorBuilder, PayloadServiceBuilder},
-        BuilderContext,
-    },
-    payload::{EthBuiltPayload, EthPayloadBuilderAttributes},
-    primitives::revm_primitives::{Env, PrecompileResult},
-    revm::{
-        handler::register::EvmHandler,
-        inspector_handle_register,
-        precompile::{Precompile, PrecompileOutput, PrecompileSpecId},
-        primitives::BlockEnv,
-        ContextPrecompiles, Database, Evm, EvmBuilder, GetInspector,
-    },
-    rpc::types::engine::PayloadAttributes,
-    transaction_pool::TransactionPool,
-};
-use reth_chainspec::ChainSpec;
-use reth_evm_ethereum::EthEvmConfig;
-use reth_node_api::{
-    ConfigureEvm, ConfigureEvmEnv, FullNodeTypes, NextBlockEnvAttributes, NodeTypes,
-    NodeTypesWithEngine, PayloadTypes,
-};
 use reth_node_builder::{
     engine_tree_config::{
         TreeConfig, DEFAULT_MEMORY_BLOCK_BUFFER_TARGET, DEFAULT_PERSISTENCE_THRESHOLD,
     },
     EngineNodeLauncher,
 };
-use reth_node_ethereum::{
-    node::{EthereumAddOns, EthereumPayloadBuilder},
-    EthereumNode,
-};
-use reth_primitives::{
-    revm_primitives::{CfgEnvWithHandlerCfg, TxEnv},
-    Header, TransactionSigned,
-};
+use reth_node_ethereum::{node::EthereumAddOns, EthereumNode};
+
 use reth_provider::providers::BlockchainProvider2;
 use reth_tracing::{RethTracer, Tracer};
-use scalar_pevm::executor::parallel::ParallelEvmContext;
-use scalar_pevm::executor::{EthExecutorProvider, ParallelExecutorProvider};
-use std::sync::Arc;
 /// Parameters for configuring the engine
 #[derive(Debug, Clone, Args, PartialEq, Eq)]
 #[command(next_help_heading = "Engine")]

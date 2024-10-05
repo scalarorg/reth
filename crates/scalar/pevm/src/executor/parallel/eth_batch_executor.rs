@@ -1,10 +1,7 @@
 //! Ethereum block executor.
 
 use super::{
-    context::ParallelEvmContextTrait,
-    eth_evm_executor::ParallelEthExecuteOutput,
-    storage::{InMemoryStorage, Storage},
-    ParallelEthBlockExecutor, ParallelEvmContext,
+    eth_evm_executor::ParallelEthExecuteOutput, ParallelEthBlockExecutor, ParallelEvmContext,
 };
 use alloy_primitives::BlockNumber;
 use core::fmt::Display;
@@ -41,7 +38,8 @@ impl<EvmConfig, DB> ParallelEthBatchExecutor<EvmConfig, DB> {
 
 impl<EvmConfig, DB> BatchExecutor<DB> for ParallelEthBatchExecutor<EvmConfig, DB>
 where
-    EvmConfig: ConfigureEvm<Header = Header>,
+    EvmConfig:
+        for<'a> ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext>,
     DB: Database<Error: Into<ProviderError> + Display>,
 {
     type Input<'b> = BlockExecutionInput<'b, BlockWithSenders>;

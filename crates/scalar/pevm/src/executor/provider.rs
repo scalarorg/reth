@@ -1,15 +1,11 @@
 //! Ethereum block executor.
 
-use super::parallel::chain::{PevmChain, PevmEthereum};
-use super::parallel::context::ParallelEvmContextTrait;
-use super::parallel::storage::{InMemoryStorage, Storage};
 use super::parallel::ParallelEvmContext;
 use super::{
     EthBatchExecutor, EthBlockExecutor, ParallelEthBatchExecutor, ParallelEthBlockExecutor,
 };
 use crate::EthEvmConfig;
 use alloc::sync::Arc;
-use alloy_provider::network::Ethereum;
 use core::fmt::Display;
 use reth_chainspec::{ChainSpec, MAINNET};
 use reth_evm::{
@@ -131,7 +127,8 @@ where
 
 impl<EvmConfig> BlockExecutorProvider for ParallelExecutorProvider<EvmConfig>
 where
-    EvmConfig: ConfigureEvm<Header = Header>,
+    EvmConfig:
+        for<'a> ConfigureEvm<Header = Header, DefaultExternalContext<'a> = ParallelEvmContext>,
 {
     type Executor<DB: Database<Error: Into<ProviderError> + Display>> =
         ParallelEthBlockExecutor<EvmConfig, DB>;
