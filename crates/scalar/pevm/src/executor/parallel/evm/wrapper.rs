@@ -7,6 +7,7 @@ use crate::executor::parallel::{
         WriteSet,
     },
 };
+use reth_primitives::TxType;
 use revm::{Context, Database, Evm, EvmContext};
 use revm_primitives::{
     Address, BlockEnv, CfgEnv, EVMError, Env, InvalidTransaction, SpecId, TxEnv, U256,
@@ -21,7 +22,7 @@ pub(crate) struct EvmWrapper<'a, S: Storage, C: PevmChain> {
     pub(super) mv_memory: &'a MvMemory,
     chain: &'a C,
     block_env: &'a BlockEnv,
-    txs: &'a [TxEnv],
+    txs: &'a [(TxEnv, TxType)],
     spec_id: SpecId,
     beneficiary_location_hash: MemoryLocationHash,
     reward_policy: RewardPolicy,
@@ -34,7 +35,7 @@ impl<'a, S: Storage, C: PevmChain> EvmWrapper<'a, S, C> {
         mv_memory: &'a MvMemory,
         chain: &'a C,
         block_env: &'a BlockEnv,
-        txs: &'a [TxEnv],
+        txs: &'a [(TxEnv, TxType)],
         spec_id: SpecId,
     ) -> Self {
         Self {
@@ -76,7 +77,7 @@ impl<'a, S: Storage, C: PevmChain> EvmWrapper<'a, S, C> {
         tx_version: &TxVersion,
     ) -> Result<VmExecutionResult, VmExecutionError> {
         // SAFETY: A correct scheduler would guarantee this index to be inbound.
-        let tx = unsafe { self.txs.get_unchecked(tx_version.tx_idx) };
+        let (tx, tx_type) = unsafe { self.txs.get_unchecked(tx_version.tx_idx) };
         let from_hash = self.hash_basic(tx.caller);
         let to_hash = tx.transact_to.to().map(|to| self.hash_basic(*to));
 
@@ -211,6 +212,7 @@ impl<'a, S: Storage, C: PevmChain> EvmWrapper<'a, S, C> {
                         self.chain,
                         self.spec_id,
                         result_and_state,
+                        tx_type,
                     ),
                     flags,
                 })

@@ -44,9 +44,9 @@ impl Default for EngineArgs {
     }
 }
 
-#[tokio::main]
-async fn main() -> eyre::Result<()> {
-    let _guard = RethTracer::new().init()?;
+//#[tokio::main]
+fn main() -> eyre::Result<()> {
+    let _guard = RethTracer::new().init();
     reth_cli_util::sigsegv_handler::install();
 
     // Enable backtraces unless a RUST_BACKTRACE value has already been explicitly provided.
@@ -58,6 +58,7 @@ async fn main() -> eyre::Result<()> {
             let enable_engine2 = engine_args.experimental;
             match enable_engine2 {
                 true => {
+                    println!("Starting reth with engine2");
                     let engine_tree_config = TreeConfig::default()
                         .with_persistence_threshold(engine_args.persistence_threshold)
                         .with_memory_block_buffer_target(engine_args.memory_block_buffer_target);
@@ -81,6 +82,7 @@ async fn main() -> eyre::Result<()> {
                     handle.node_exit_future.await
                 }
                 false => {
+                    println!("Starting reth with default engine");
                     let handle = builder.launch_node(EthereumNode::default()).await?;
                     handle.node_exit_future.await
                 }
@@ -91,4 +93,24 @@ async fn main() -> eyre::Result<()> {
         std::process::exit(1);
     }
     res
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    /// A helper type to parse Args more easily
+    #[derive(Parser)]
+    struct CommandParser<T: Args> {
+        #[command(flatten)]
+        args: T,
+    }
+
+    #[test]
+    fn test_parse_engine_args() {
+        let default_args = EngineArgs::default();
+        let args = CommandParser::<EngineArgs>::parse_from(["reth"]).args;
+        assert_eq!(args, default_args);
+    }
 }
