@@ -2,7 +2,7 @@ use revm_primitives::B256;
 
 use super::storage::InMemoryStorage;
 
-pub trait ParallelEvmContextTrait {
+pub(crate) trait ParallelEvmContextTrait {
     fn storage(&self) -> &InMemoryStorage<'_>;
     fn set_storage(&mut self, storage: InMemoryStorage<'static>);
     fn set_block_hash(&mut self, number: u64, hash: B256);
@@ -12,7 +12,7 @@ pub struct ParallelEvmContext {
     storage: InMemoryStorage<'static>,
 }
 impl ParallelEvmContext {
-    pub fn new(storage: InMemoryStorage<'static>) -> Self {
+    pub(crate) fn new(storage: InMemoryStorage<'static>) -> Self {
         ParallelEvmContext { storage }
     }
 }

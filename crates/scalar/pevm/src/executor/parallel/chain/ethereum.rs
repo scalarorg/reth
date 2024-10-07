@@ -6,10 +6,11 @@ use std::{
 };
 
 use alloy_chains::NamedChain;
-use alloy_consensus::{ReceiptEnvelope, TxType};
+use alloy_consensus::{Receipt, ReceiptEnvelope, TxType};
 use alloy_primitives::{B256, U256};
 use alloy_provider::network::eip2718::Encodable2718;
 use alloy_rpc_types::{BlockTransactions, Header};
+
 use revm::{
     primitives::{BlockEnv, SpecId, TxEnv},
     Handler,
@@ -212,9 +213,15 @@ impl PevmChain for PevmEthereum {
             .collect::<Result<_, _>>()?;
 
         // 2. Create an iterator of [ReceiptEnvelope]
-        let receipt_envelope_iter =
-            Iterator::zip(tx_types.iter(), tx_results.iter()).map(|(tx_type, tx_result)| {
-                let receipt = tx_result.receipt.clone().with_bloom();
+        let receipt_envelope_iter = Iterator::zip(tx_types.iter(), tx_results.iter()).map(
+            |(tx_type, PevmTxExecutionResult { receipt, state })| {
+                let receipt = Receipt {
+                    status: receipt.success.into(),
+                    cumulative_gas_used: receipt.cumulative_gas_used as u128,
+                    logs: receipt.logs.clone(),
+                }
+                .with_bloom();
+                // let receipt = tx_result.receipt.clone().with_bloom();
                 match tx_type {
                     TxType::Legacy => ReceiptEnvelope::Legacy(receipt),
                     TxType::Eip2930 => ReceiptEnvelope::Eip2930(receipt),
@@ -222,7 +229,8 @@ impl PevmChain for PevmEthereum {
                     TxType::Eip4844 => ReceiptEnvelope::Eip4844(receipt),
                     TxType::Eip7702 => ReceiptEnvelope::Eip7702(receipt),
                 }
-            });
+            },
+        );
 
         // 3. Create a trie then calculate the root hash
         // We use [BTreeMap] because the keys must be sorted in ascending order.

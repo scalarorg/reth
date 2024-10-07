@@ -1,9 +1,10 @@
 //! Ethereum block executor.
 
-use super::{
-    eth_evm_executor::ParallelEthExecuteOutput, ParallelEthEvmExecutor, ParallelEvmContext,
+use super::{ParallelEthEvmExecutor, ParallelEvmContext};
+use crate::{
+    dao_fork::{DAO_HARDFORK_BENEFICIARY, DAO_HARDKFORK_ACCOUNTS},
+    executor::eth_evm_executor::EthExecuteOutput,
 };
-use crate::dao_fork::{DAO_HARDFORK_BENEFICIARY, DAO_HARDKFORK_ACCOUNTS};
 use alloc::sync::Arc;
 use alloy_primitives::U256;
 use core::fmt::Display;
@@ -86,7 +87,7 @@ where
         &mut self,
         block: &BlockWithSenders,
         total_difficulty: U256,
-    ) -> Result<ParallelEthExecuteOutput, BlockExecutionError> {
+    ) -> Result<EthExecuteOutput, BlockExecutionError> {
         // 1. prepare state on new block
         self.on_new_block(&block.header);
 
@@ -166,7 +167,7 @@ where
     /// Returns an error if the block could not be executed or failed verification.
     fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
         let BlockExecutionInput { block, total_difficulty } = input;
-        let ParallelEthExecuteOutput { receipts, requests, gas_used } =
+        let EthExecuteOutput { receipts, requests, gas_used } =
             self.execute_without_verification(block, total_difficulty)?;
 
         // NOTE: we need to merge keep the reverts for the bundle retention
@@ -184,7 +185,7 @@ where
         F: FnMut(&State<DB>),
     {
         let BlockExecutionInput { block, total_difficulty } = input;
-        let ParallelEthExecuteOutput { receipts, requests, gas_used } =
+        let EthExecuteOutput { receipts, requests, gas_used } =
             self.execute_without_verification(block, total_difficulty)?;
 
         // NOTE: we need to merge keep the reverts for the bundle retention

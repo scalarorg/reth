@@ -1,4 +1,5 @@
-use alloy_rpc_types::Receipt;
+use reth_primitives::{Receipt, TxType};
+// use alloy_consensus::Receipt;
 use revm_primitives::{Address, EVMError, ResultAndState, SpecId};
 use std::collections::HashMap;
 
@@ -79,11 +80,14 @@ impl PevmTxExecutionResult {
         chain: &C,
         spec_id: SpecId,
         ResultAndState { result, state }: ResultAndState,
+        tx_type: &TxType,
     ) -> Self {
         Self {
             receipt: Receipt {
-                status: result.is_success().into(),
-                cumulative_gas_used: result.gas_used() as u128,
+                //status: result.is_success().into(),
+                tx_type: tx_type.clone(),
+                success: result.is_success(),
+                cumulative_gas_used: result.gas_used(),
                 logs: result.into_logs(),
             },
             state: state

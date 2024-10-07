@@ -1,8 +1,8 @@
 //! Ethereum block executor.
 
-use super::{
-    eth_evm_executor::ParallelEthExecuteOutput, ParallelEthBlockExecutor, ParallelEvmContext,
-};
+use crate::executor::eth_evm_executor::EthExecuteOutput;
+
+use super::{ParallelEthBlockExecutor, ParallelEvmContext};
 use alloy_primitives::BlockNumber;
 use core::fmt::Display;
 use reth_ethereum_consensus::validate_block_post_execution;
@@ -53,7 +53,7 @@ where
             self.batch_record.set_first_block(block.number);
         }
 
-        let ParallelEthExecuteOutput { receipts, requests, gas_used: _ } =
+        let EthExecuteOutput { receipts, requests, gas_used: _ } =
             self.executor.execute_without_verification(block, total_difficulty)?;
 
         validate_block_post_execution(block, self.executor.chain_spec(), &receipts, &requests)?;

@@ -14,6 +14,15 @@ prepare_network() {
     fi
 }
 
+dev() {
+    export ENV=${ENV:-local}
+    cd $DIR/..
+    cargo run --package scalar-seth node \
+    --dev \
+    --dev.block-time 12s
+    # cargo run node 
+}
+
 start() {
     export ENV=${ENV:-local}
     # prepare_network
@@ -95,6 +104,9 @@ do
 done
 
 case $COMMAND in
+    dev)
+        dev
+        ;;
     start)
         start
         ;;
