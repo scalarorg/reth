@@ -275,6 +275,7 @@ pub(crate) enum Task {
 }
 
 bitflags! {
+    #[derive(Debug)]
     pub(crate) struct FinishExecFlags: u8 {
         // Do we need to validate from this transaction?
         // The first and lazy transactions don't need validation. Note

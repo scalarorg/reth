@@ -1,3 +1,4 @@
+use crate::executor::parallel::ParallelEvmContext;
 use alloc::vec::Vec;
 use alloy_primitives::{Address, Bytes, TxKind, U256};
 use reth_chainspec::{ChainSpec, EthereumHardforks};
@@ -5,21 +6,16 @@ use reth_ethereum_forks::{EthereumHardfork, Head};
 use reth_evm::{ConfigureEvm, ConfigureEvmEnv, NextBlockEnvAttributes};
 use reth_primitives::constants::EIP1559_INITIAL_BASE_FEE;
 use reth_primitives::{transaction::FillTxEnv, Header, TransactionSigned};
+use revm::{
+    handler::register::EvmHandler, inspector_handle_register, precompile::PrecompileSpecId,
+    ContextPrecompiles, Database, Evm, EvmBuilder, GetInspector,
+};
 use revm_primitives::{
-    AnalysisKind, BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, Env, SpecId, TxEnv,
+    address, AnalysisKind, BlobExcessGasAndPrice, BlockEnv, CfgEnv, CfgEnvWithHandlerCfg, Env,
+    Precompile, PrecompileOutput, PrecompileResult, SpecId, TxEnv,
 };
 use std::sync::Arc;
 
-use crate::executor::parallel::context::ParallelEvmContextTrait;
-
-// use crate::executor::parallel::ParallelEvmContext;
-// pub trait ConfigureEvmWitchContext: ConfigureEvm {
-//     type DefaultExternalContext: ParallelEvmContextTrait;
-// }
-
-// impl ConfigureEvmWitchContext for EthEvmConfig {
-//     type DefaultExternalContext = ParallelEvmContext;
-// }
 /// Returns the revm [`SpecId`](revm_primitives::SpecId) at the given timestamp.
 ///
 /// # Note
@@ -233,6 +229,239 @@ impl ConfigureEvm for EthEvmConfig {
     type DefaultExternalContext<'a> = ();
 
     fn default_external_context<'a>(&self) -> Self::DefaultExternalContext<'a> {}
+}
+/// Sequential EVM configuration
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct SequencialEvmConfig {
+    /// Wrapper around mainnet configuration
+    inner: EthEvmConfig,
+}
+
+impl SequencialEvmConfig {
+    /// Creates a new sequential EVM configuration with the given chain spec.
+    pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
+        Self { inner: EthEvmConfig::new(chain_spec) }
+    }
+}
+
+impl SequencialEvmConfig {
+    /// Sets the precompiles to the EVM handler
+    ///
+    /// This will be invoked when the EVM is created via [ConfigureEvm::evm] or
+    /// [ConfigureEvm::evm_with_inspector]
+    ///
+    /// This will use the default mainnet precompiles and add additional precompiles.
+    pub fn set_precompiles<EXT, DB>(handler: &mut EvmHandler<'_, EXT, DB>)
+    where
+        DB: Database,
+    {
+        // first we need the evm spec id, which determines the precompiles
+        let spec_id = handler.cfg.spec_id;
+
+        // install the precompiles
+        handler.pre_execution.load_precompiles = Arc::new(move || {
+            let mut precompiles = ContextPrecompiles::new(PrecompileSpecId::from_spec_id(spec_id));
+            precompiles.extend([(
+                address!("0000000000000000000000000000000000000999"),
+                Precompile::Env(Self::my_precompile).into(),
+            )]);
+            precompiles
+        });
+    }
+
+    /// A custom precompile that does nothing
+    fn my_precompile(_data: &Bytes, _gas: u64, _env: &Env) -> PrecompileResult {
+        Ok(PrecompileOutput::new(0, Bytes::new()))
+    }
+}
+
+impl ConfigureEvmEnv for SequencialEvmConfig {
+    type Header = Header;
+
+    fn fill_tx_env(&self, tx_env: &mut TxEnv, transaction: &TransactionSigned, sender: Address) {
+        self.inner.fill_tx_env(tx_env, transaction, sender);
+    }
+
+    fn fill_tx_env_system_contract_call(
+        &self,
+        env: &mut Env,
+        caller: Address,
+        contract: Address,
+        data: Bytes,
+    ) {
+        self.inner.fill_tx_env_system_contract_call(env, caller, contract, data);
+    }
+
+    fn fill_cfg_env(
+        &self,
+        cfg_env: &mut CfgEnvWithHandlerCfg,
+        header: &Self::Header,
+        total_difficulty: U256,
+    ) {
+        self.inner.fill_cfg_env(cfg_env, header, total_difficulty);
+    }
+
+    fn next_cfg_and_block_env(
+        &self,
+        parent: &Self::Header,
+        attributes: NextBlockEnvAttributes,
+    ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
+        self.inner.next_cfg_and_block_env(parent, attributes)
+    }
+}
+
+/// Implement the EVM configuration for the custom EVM
+/// ParallelEvmContext is used to keep inmemory state for the EVM
+impl ConfigureEvm for SequencialEvmConfig {
+    type DefaultExternalContext<'a> = ();
+
+    fn evm<DB: Database>(&self, db: DB) -> Evm<'_, Self::DefaultExternalContext<'_>, DB> {
+        EvmBuilder::default()
+            .with_db(db)
+            .with_external_context(self.default_external_context())
+            // add additional precompiles
+            .append_handler_register(SequencialEvmConfig::set_precompiles)
+            .build()
+    }
+
+    fn evm_with_inspector<DB, I>(&self, db: DB, inspector: I) -> Evm<'_, I, DB>
+    where
+        DB: Database,
+        I: GetInspector<DB>,
+    {
+        EvmBuilder::default()
+            .with_db(db)
+            .with_external_context(inspector)
+            // add additional precompiles
+            .append_handler_register(SequencialEvmConfig::set_precompiles)
+            .append_handler_register(inspector_handle_register)
+            .build()
+    }
+
+    fn default_external_context<'a>(&self) -> Self::DefaultExternalContext<'a> {}
+}
+/// Parallel EVM configuration
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ParallelEvmConfig {
+    /// Wrapper around mainnet configuration
+    inner: EthEvmConfig,
+    /// Parallel EVM external context, stores inmemory state
+    pub context: ParallelEvmContext,
+}
+
+impl ParallelEvmConfig {
+    /// Creates a new `ParallelEvmConfig` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `chain_spec` - An `Arc<ChainSpec>` containing the chain specification.
+    pub fn new(chain_spec: Arc<ChainSpec>) -> Self {
+        Self { inner: EthEvmConfig::new(chain_spec), context: ParallelEvmContext::default() }
+    }
+}
+
+impl ParallelEvmConfig {
+    /// Sets the precompiles to the EVM handler
+    ///
+    /// This will be invoked when the EVM is created via [ConfigureEvm::evm] or
+    /// [ConfigureEvm::evm_with_inspector]
+    ///
+    /// This will use the default mainnet precompiles and add additional precompiles.
+    pub fn set_precompiles<EXT, DB>(handler: &mut EvmHandler<'_, EXT, DB>)
+    where
+        DB: Database,
+    {
+        // first we need the evm spec id, which determines the precompiles
+        let spec_id = handler.cfg.spec_id;
+
+        // install the precompiles
+        handler.pre_execution.load_precompiles = Arc::new(move || {
+            let mut precompiles = ContextPrecompiles::new(PrecompileSpecId::from_spec_id(spec_id));
+            precompiles.extend([(
+                address!("0000000000000000000000000000000000000999"),
+                Precompile::Env(Self::my_precompile).into(),
+            )]);
+            precompiles
+        });
+    }
+
+    /// A custom precompile that does nothing
+    fn my_precompile(_data: &Bytes, _gas: u64, _env: &Env) -> PrecompileResult {
+        Ok(PrecompileOutput::new(0, Bytes::new()))
+    }
+}
+
+impl ConfigureEvmEnv for ParallelEvmConfig {
+    type Header = Header;
+
+    fn fill_tx_env(&self, tx_env: &mut TxEnv, transaction: &TransactionSigned, sender: Address) {
+        self.inner.fill_tx_env(tx_env, transaction, sender);
+    }
+
+    fn fill_tx_env_system_contract_call(
+        &self,
+        env: &mut Env,
+        caller: Address,
+        contract: Address,
+        data: Bytes,
+    ) {
+        self.inner.fill_tx_env_system_contract_call(env, caller, contract, data);
+    }
+
+    fn fill_cfg_env(
+        &self,
+        cfg_env: &mut CfgEnvWithHandlerCfg,
+        header: &Self::Header,
+        total_difficulty: U256,
+    ) {
+        self.inner.fill_cfg_env(cfg_env, header, total_difficulty);
+    }
+
+    fn next_cfg_and_block_env(
+        &self,
+        parent: &Self::Header,
+        attributes: NextBlockEnvAttributes,
+    ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
+        self.inner.next_cfg_and_block_env(parent, attributes)
+    }
+}
+
+/// Implement the EVM configuration for the custom EVM
+/// ParallelEvmContext is used to keep inmemory state for the EVM
+impl ConfigureEvm for ParallelEvmConfig {
+    type DefaultExternalContext<'a> = ParallelEvmContext;
+
+    fn evm<DB: Database>(&self, db: DB) -> Evm<'_, Self::DefaultExternalContext<'_>, DB> {
+        let context = self.default_external_context();
+        //Check if the context is uninitialized then initialize it with genesis state
+        EvmBuilder::default()
+            .with_db(db)
+            .with_external_context(context)
+            // add additional precompiles
+            .append_handler_register(ParallelEvmConfig::set_precompiles)
+            .build()
+    }
+
+    fn evm_with_inspector<DB, I>(&self, db: DB, inspector: I) -> Evm<'_, I, DB>
+    where
+        DB: Database,
+        I: GetInspector<DB>,
+    {
+        EvmBuilder::default()
+            .with_db(db)
+            .with_external_context(inspector)
+            // add additional precompiles
+            .append_handler_register(ParallelEvmConfig::set_precompiles)
+            .append_handler_register(inspector_handle_register)
+            .build()
+    }
+
+    fn default_external_context<'a>(&self) -> Self::DefaultExternalContext<'a> {
+        // Self::DefaultExternalContext::default()
+        self.context.clone()
+    }
 }
 
 #[cfg(test)]

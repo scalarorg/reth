@@ -11,8 +11,7 @@ use reth_chainspec::ChainSpec;
 use reth_node_api::{FullNodeTypes, NodeTypes, NodeTypesWithEngine, PayloadTypes};
 use reth_node_ethereum::node::EthereumPayloadBuilder;
 use scalar_pevm::executor::{EthExecutorProvider, ParallelExecutorProvider};
-
-use crate::{ParallelEvmConfig, SequencialEvmConfig};
+use scalar_pevm::{ParallelEvmConfig, SequencialEvmConfig};
 
 /// Builds a regular ethereum block executor that uses the custom EVM.
 #[derive(Debug, Default, Clone, Copy)]

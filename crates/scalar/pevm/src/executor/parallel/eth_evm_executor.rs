@@ -2,7 +2,7 @@
 
 use ahash::AHashMap;
 use alloc::{boxed::Box, vec, vec::Vec};
-use async_scoped::TokioScope;
+use async_scoped::{AsyncStdScope, TokioScope};
 use core::fmt::Display;
 use reth_chainspec::{ChainSpec, EthereumHardforks};
 use reth_evm::{
@@ -16,6 +16,7 @@ use reth_evm::{
 use reth_execution_errors::{BlockValidationError, InternalBlockExecutionError};
 use reth_primitives::{BlockWithSenders, Header, Receipt, Request, TxType};
 use reth_revm::{db::State, Evm};
+use reth_tracing::tracing::info;
 use revm::DatabaseCommit;
 use revm_primitives::{db::Database, ResultAndState, TxEnv, B256, U256};
 use std::{
@@ -173,13 +174,10 @@ where
         self.apply_pre_execution_changes(block, &mut evm)?;
         // Execute transactions
         let result = self.parallel_transition::<Ext, DB>(block, evm);
+        if let Err(err) = &result {
+            info!(target: "scalaris::pevm", "parallel transition error: {:?}", err);
+        }
         result
-        // let mut cumulative_gas_used = 0;
-        // let mut receipts = Vec::with_capacity(block.body.transactions.len());
-
-        // let requests = vec![];
-
-        // Ok(EthExecuteOutput { receipts, requests, gas_used: cumulative_gas_used as u64 })
     }
     fn apply_pre_execution_changes<Ext, DB>(
         &self,
@@ -210,7 +208,7 @@ where
 
         let block_env = evm.block_mut();
         self.evm_config.fill_block_env(block_env, &block.header, true);
-
+        evm.context.external.set_block_hash(block.number, block.parent_hash);
         Ok(())
     }
     fn parallel_transition<Ext, DB>(
@@ -224,12 +222,12 @@ where
         DB::Error: Into<ProviderError> + Display,
     {
         // Use tokio runtime to execute transactions in parallel
-        let concurrency_level = Self::get_concurrency_level();
         // let runtime: Runtime = self.prepare_runtime(concurrency_level).map_err(|err| {
         //     BlockExecutionError::Internal(InternalBlockExecutionError::Other(Box::new(err)))
         // })?;
         let block_env = evm.block();
         let block_size = block.transactions_with_sender().count();
+        info!(target: "scalaris::pevm", "parallel transition with block size: {}", block_size);
         let scheduler = Scheduler::new(block_size);
 
         let chain = PevmEthereum::mainnet();
@@ -242,7 +240,7 @@ where
             self.evm_config.fill_tx_env(&mut tx, transaction, *address);
             txs.push((tx, tx_type));
         }
-        //evm.context.external.set_block_hash(block.number, block.parent_hash);
+
         let storage = evm.context.external.storage();
         let evm_wapper = EvmWrapper::new(
             &self.hasher,
@@ -254,9 +252,10 @@ where
             evm.spec_id(),
         );
         let mut abort_reason = OnceLock::new();
+        let concurrency_level = Self::get_concurrency_level();
         for _ in 0..concurrency_level {
             unsafe {
-                TokioScope::scope(|scope| {
+                AsyncStdScope::scope(|scope| {
                     // Use the scope to spawn the future.
                     scope.spawn(async {
                         let mut task = scheduler.next_task();
@@ -435,14 +434,8 @@ where
         let receipts = fully_evaluated_results
             .into_iter()
             .map(|PevmTxExecutionResult { receipt, state }| {
+                info!(target: "scalaris::pevm", "state: {:?}", state);
                 receipt
-                // let alloy_consensus::Receipt { status, cumulative_gas_used, logs } = receipt;
-                // return Receipt {
-                //     tx_type: (),
-                //     success: status.is_success(),
-                //     cumulative_gas_used: cumulative_gas_used as u64,
-                //     logs,
-                // };
             })
             .collect();
         let requests = if self.chain_spec.is_prague_active_at_timestamp(block.timestamp) {
@@ -582,21 +575,7 @@ where
         }
     }
 }
-/// A common inmemory storage is stored in the EVM external context
-/// Inject current block hash into the storage
-/// Then return reference to the storage
-fn preapre_internal_storage<'a, Ext, DB>(
-    evm: &'a mut Evm<'_, Ext, &mut State<DB>>,
-    block: &BlockWithSenders,
-) -> &'a InMemoryStorage<'a>
-where
-    Ext: ParallelEvmContextTrait,
-    DB: Database,
-    DB::Error: Into<ProviderError> + Display,
-{
-    evm.context.external.set_block_hash(block.number, block.parent_hash);
-    evm.context.external.storage()
-}
+
 fn try_validate(
     mv_memory: &MvMemory,
     scheduler: &Scheduler,
