@@ -21,6 +21,7 @@ use reth_revm::{
     db::{states::bundle_state::BundleRetention, State},
     state_change::post_block_balance_increments,
 };
+use reth_tracing::tracing::{debug, info};
 use revm_primitives::{db::Database, BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg};
 /// A basic Ethereum block executor.
 ///
@@ -88,6 +89,7 @@ where
         block: &BlockWithSenders,
         total_difficulty: U256,
     ) -> Result<EthExecuteOutput, BlockExecutionError> {
+        info!(target: "scalaris::pevm", "parallel execute without verification");
         // 1. prepare state on new block
         self.on_new_block(&block.header);
 

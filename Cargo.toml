@@ -128,6 +128,7 @@ members = [
     "crates/trie/trie",
     "crates/scalar/seth",
     "crates/scalar/pevm",
+    "crates/scalar/testing",
     "examples/beacon-api-sidecar-fetcher/",
     "examples/beacon-api-sse/",
     "examples/bsc-p2p",

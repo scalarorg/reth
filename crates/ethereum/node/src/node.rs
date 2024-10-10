@@ -126,7 +126,6 @@ where
         let chain_spec = ctx.chain_spec();
         let evm_config = EthEvmConfig::new(ctx.chain_spec());
         let executor = EthExecutorProvider::new(chain_spec, evm_config.clone());
-
         Ok((evm_config, executor))
     }
 }

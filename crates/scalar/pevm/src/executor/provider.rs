@@ -14,6 +14,7 @@ use reth_evm::{
 };
 use reth_primitives::Header;
 use reth_revm::{batch::BlockBatchRecord, db::State};
+use reth_tracing::tracing::info;
 use revm_primitives::db::Database;
 /// Provides executors to execute regular ethereum blocks
 #[derive(Debug, Clone)]

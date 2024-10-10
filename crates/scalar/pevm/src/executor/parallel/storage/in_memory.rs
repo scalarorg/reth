@@ -31,6 +31,9 @@ impl<'a> InMemoryStorage<'a> {
     pub(crate) fn set_block_hash(&mut self, number: u64, hash: B256) {
         self.block_hashes.insert(number, hash);
     }
+    pub(crate) fn insert_address(&mut self, address: Address, account: EvmAccount) {
+        self.accounts.insert(address, account);
+    }
 }
 
 impl<'a> Storage for InMemoryStorage<'a> {

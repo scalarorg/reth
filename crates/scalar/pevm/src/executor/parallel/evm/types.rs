@@ -8,6 +8,7 @@ use crate::executor::parallel::{
     types::{BuildSuffixHasher, EvmAccount, FinishExecFlags, TxIdx},
 };
 
+#[derive(Debug)]
 pub(crate) enum VmExecutionError {
     Retry,
     FallbackToSequential,
@@ -47,7 +48,7 @@ impl From<ReadError> for VmExecutionError {
         }
     }
 }
-
+#[derive(Debug)]
 pub(crate) struct VmExecutionResult {
     pub(crate) execution_result: PevmTxExecutionResult,
     pub(crate) flags: FinishExecFlags,

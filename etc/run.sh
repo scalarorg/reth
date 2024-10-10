@@ -17,12 +17,18 @@ prepare_network() {
 dev() {
     export ENV=${ENV:-local}
     cd $DIR/..
+    RUST_LOG=debug
     cargo run --package scalar-seth node \
     --dev \
-    --dev.block-time 12s
+    --dev.block-time 12s \
+    --engine.experimental
+   
     # cargo run node 
 }
-
+test() {
+    cd $DIR/..
+    cargo test -p scalar-testing --features pevm-tests
+}
 start() {
     export ENV=${ENV:-local}
     # prepare_network

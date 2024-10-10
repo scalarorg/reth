@@ -21,7 +21,7 @@ reth-ethereum-consensus.workspace = true
 reth-prune-types.workspace = true
 reth-execution-errors.workspace = true
 reth-execution-types.workspace = true
-
+reth-tracing.workspace = true
 revm.workspace = true
 
 # Ethereum
@@ -42,7 +42,7 @@ alloy-transport.workspace = true
 alloy-transport-http.workspace = true
 alloy-trie.workspace = true
 
-async-scoped = {version="0.9.0", features=["use-tokio"]}
+async-scoped = {version="0.9.0", features=["use-tokio", "use-async-std"]}
 bitflags.workspace = true
 bitvec = "1.0.1"
 dashmap.workspace = true
